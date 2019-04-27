@@ -2,13 +2,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 
-using BencodeNET;
 using BencodeNET.Torrents;
 
 namespace CourseWork
@@ -21,7 +16,7 @@ namespace CourseWork
         private int blockSize;
         private string rootDir;
         Torrent torrent;
-        private int lastPieceSize;
+        public int lastPieceSize { get; private set; }
         public long totalSize { get; private set; }
 
         private FileStream[] files;
@@ -29,17 +24,22 @@ namespace CourseWork
         private LinkedList<PieceInfoNode> pendingIncomingPiecesInfo;
         //private LinkedList<PieceInfoNode> pendingOutgoingiecesInfo;
 
-        public FileWorker(long pieceSize, string rootDir, Torrent torrent, int blockSize)
+        public delegate void SavedToDiskDelegate(int pieceIndex);
+        private SavedToDiskDelegate SavedToDisk;
+
+        public FileWorker(long pieceSize, string rootDir, Torrent torrent, int blockSize, SavedToDiskDelegate savedDelegate)
         {
+            this.SavedToDisk = savedDelegate;
+
             this.blockSize = blockSize;
             // I hope only MessageHandler's thread will write to the file, so FileShare can be read for others and write only for this thread
             if (torrent.File != null)
             {
                 files = new FileStream[1];
                 // check FileName for errors!
-                files[0] = File.Open(rootDir + torrent.File.FileName, FileMode.Open, FileAccess.Write, FileShare.Read);
+                files[0] = File.Open(rootDir + Path.DirectorySeparatorChar + torrent.File.FileName, FileMode.Create, FileAccess.Write, FileShare.Read);
                 totalSize = torrent.File.FileSize;
-                
+                files[0].SetLength(totalSize);
             }
             else
             {
@@ -47,8 +47,9 @@ namespace CourseWork
                 int i = 0;
                 foreach (var fileInfo in torrent.Files)
                 {
-                    // will be there an exception if path (directories) does not exist?
-                    files[i] = File.Open(rootDir + fileInfo.FullPath, FileMode.Open, FileAccess.Write, FileShare.Read);
+                    // will be there an exception if path (directories) does not exist? // CreateNew instead of Create?
+                    files[i] = File.Open(rootDir + Path.DirectorySeparatorChar + fileInfo.FullPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+                    files[i].SetLength(fileInfo.FileSize);
                     i++;
                     totalSize += fileInfo.FileSize;
                 }
@@ -66,7 +67,8 @@ namespace CourseWork
         {
             Tuple<int, int> result = null;
             int resultOffset = 0;
-            bool found = false;
+            bool entryFound = false;
+            bool spaceFound = false;
             foreach (var entry in pendingIncomingPiecesInfo)
             {
                 if (entry.pieceIndex == index)
@@ -74,9 +76,9 @@ namespace CourseWork
                     for (int i = 0; i < entry.blocksMap.Count; i++)
                     {
                         // well, it can't be that all of them will be "true", but...
-                        // can't be because all completed pieces we write in the disk and remove them from this list,
+                        // can't be because all completed pieces we write to the disk and remove them from this list,
                         // so completed pieces (with all blocks) can't be in pendingIncomingPiecesInfo
-                        if (entry.blocksMap[i] == false)
+                        if (entry.blocksMap[i] == false && entry.requestedBlocksMap[i] == false)
                         {
                             resultOffset = i * blockSize;
                             if (i == entry.blocksMap.Count - 1)
@@ -87,17 +89,25 @@ namespace CourseWork
                             {
                                 result = new Tuple<int, int>(resultOffset, blockSize);
                             }
+                            spaceFound = true;
+                            entry.requestedBlocksMap[i] = true;
                             break;
                         }
                     }
-                    found = true;
+                    entryFound = true;
                     break;
                 }
             }
-            if (!found)
+            if (!entryFound)
             {
                 AddPendingIncomingPiece(index);
+                // I guess I need to figure out real BlockSize, not just standard
                 result = new Tuple<int, int>(0, blockSize);
+            }
+            else if (!spaceFound)
+            {
+                // all blocks from this piece have been already requested, so caller must try again
+                return null;
             }
             return result;
         }
@@ -109,20 +119,34 @@ namespace CourseWork
             {
                 // how many blocks are in the last piece?
                 totalBlocks = (int)Math.Ceiling((double)lastPieceSize / blockSize);
-                return totalBlocks * blockSize - lastPieceSize;
+                int size = totalBlocks * blockSize - lastPieceSize;
+                return size == 0 ? blockSize : size;
             }
             else
             {
                 // how many blocks are in a regular piece?
                 totalBlocks = (int)Math.Ceiling((double)torrent.PieceSize / blockSize);
-                return (int)(totalBlocks * blockSize - torrent.PieceSize);
+                int size = (int)(totalBlocks * blockSize - torrent.PieceSize);
+                return size == 0 ? blockSize : size;
             }
         }
 
         private void AddPendingIncomingPiece(int index)
         {
-            var newEntry = new PieceInfoNode(index, new byte[torrent.PieceSize],
-                new BitArray((int)Math.Ceiling((double)torrent.PieceSize / blockSize)));
+            long actualPieceSize;
+            if (index == torrent.NumberOfPieces - 1)
+            {
+                actualPieceSize = lastPieceSize;
+            }
+            else
+            {
+                actualPieceSize = torrent.PieceSize;
+            }
+
+            var newEntry = new PieceInfoNode(index, new byte[actualPieceSize],
+                new BitArray((int)Math.Ceiling((double)actualPieceSize / blockSize)));
+            // true because its index is gonna be returned and then immediatly requested
+            newEntry.requestedBlocksMap[0] = true;
             pendingIncomingPiecesInfo.AddLast(newEntry);
         }
 
@@ -144,10 +168,21 @@ namespace CourseWork
                         
                         if (entry.Value.bufferSize == entry.Value.pieceBuffer.Length)
                         {
-                            // remove from pending incoming requests
                             // check SHA1 and save to disk if OK
-                            SaveToDisk(entry.Value);
-                            pendingIncomingPiecesInfo.Remove(entry);
+                            if (SaveToDisk(entry.Value))
+                            {
+                                // remove from pending incoming requests
+                                SavedToDisk(entry.Value.pieceIndex);
+                                pendingIncomingPiecesInfo.Remove(entry);
+                                // TODO: Now we can send "HAVE" message!
+                            }
+                            else
+                            {
+                                // need to download the whole piece again
+                                entry.Value.blocksMap.SetAll(false);
+                                entry.Value.requestedBlocksMap.SetAll(false);
+                                entry.Value.bufferSize = 0;
+                            }
                         }
                     }
                     found = true;
@@ -160,17 +195,64 @@ namespace CourseWork
                 // something went really wrong. I recieved a block I didn't asked for. Can it happen? What should I do?
                 // Create a new entry for it, or just discard it? Or sever the connection? So many questions
             }
-
         }
 
-        private void SaveToDisk(PieceInfoNode entry)
+        private bool SaveToDisk(PieceInfoNode entry)
         {
-            byte[] hashResult;
+           /* byte[] hashResult;
+            // something is wrong with resulting hash..
             using (SHA1 hasher = new SHA1CryptoServiceProvider())
             {
                 hashResult = hasher.ComputeHash(entry.pieceBuffer);
             }
+            // check if HASH is OK
+            if (!CompareHashes(hashResult, entry.pieceIndex * 20))
+            {
+                // an error here.. TODO: Need to drop the piece and mark it as available for downloading
+                return false;
+            }*/
+            
 
+            // is data reliable? Won't I jump off the file boundaries?..
+            long fileOffset = entry.pieceIndex * torrent.PieceSize;
+            int i = 0;
+            long curOffset = 0;
+            do
+            {
+                curOffset += files[i].Length;
+                i++;
+            } while (i < files.Length && curOffset < fileOffset);
+
+            // offset in the target [i - 1] file
+            fileOffset -= curOffset - files[i - 1].Length;
+            files[i - 1].Seek(fileOffset, SeekOrigin.Begin);
+            int countToWrite = files[i - 1].Length - fileOffset >= entry.pieceBuffer.Length ? entry.pieceBuffer.Length :
+                (int)(files[i - 1].Length - fileOffset);
+
+            // async would be nice, but what about synchronization then?
+            files[i - 1].Write(entry.pieceBuffer, 0, countToWrite);
+            // can get an "Out of range" if the next file doesn't exist. Need to watch out for this if peer sends wrong data!
+            if (countToWrite < entry.pieceBuffer.Length)
+            {
+                files[i].Seek(0, SeekOrigin.Begin);
+                files[i].Write(entry.pieceBuffer, countToWrite, entry.pieceBuffer.Length - countToWrite);
+            }
+            return true;
+        }
+
+        private bool CompareHashes(byte[] hash, int strOffset)
+        {
+            //int i = strOffset;
+            int i = 0;
+            while (i < hash.Length && (hash[i] == torrent.Pieces[i + strOffset]))
+            {
+                i++;
+            }
+            if (i == hash.Length)
+            {
+                return true;
+            }
+            return false;
         }
 
         public void AddToPieceBuffer(int index, byte[] block, int offset)

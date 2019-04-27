@@ -65,6 +65,7 @@ namespace CourseWork
 
         private void Handler(Tuple<DownloadingFile, PeerMessage, PeerConnection> tuple)
         {
+            // TODO: what if I recieve handshake? I mean, if someone's trying to connect to me and I'm not the initiator
             switch (tuple.Item2.messageType)
             {
                 case MessageType.keepAlive:
@@ -72,19 +73,19 @@ namespace CourseWork
                     // reset the activity timer
                     break;
                 case MessageType.choke:
-                    tuple.Item3.SetChoked();
+                    tuple.Item3.SetPeerChoking();
                     break;
                 case MessageType.unchoke:
-                    tuple.Item3.SetUnchoked();
+                    tuple.Item3.SetPeerUnchoking();
                     break;
                 case MessageType.interested:
-                    tuple.Item3.SetInterested();
+                    tuple.Item3.SetPeerInterested();
                     break;
                 case MessageType.notInterested:
-                    tuple.Item3.SetNotInterested();
+                    tuple.Item3.SetPeerNotInterested();
                     break;
                 case MessageType.have:
-                    tuple.Item3.SetHave(tuple.Item2.pieceIndex);
+                    tuple.Item3.SetPeerHave(tuple.Item2.pieceIndex);
                     break;
                 case MessageType.bitfield:
                     tuple.Item3.SetBitField(tuple.Item2);
@@ -99,6 +100,7 @@ namespace CourseWork
                     {
                         byte[] block = new byte[tuple.Item2.GetMsgContents().Length - tuple.Item2.rawBytesOffset];
                         Array.Copy(tuple.Item2.GetMsgContents(), tuple.Item2.rawBytesOffset, block, 0, block.Length);
+                        //// if true then we got the block. Can actually avoid conditional, but idk what's faster (old ver)
                         tuple.Item1.fileWorker.AddBlock(tuple.Item2.pieceIndex, tuple.Item2.pieceOffset, block);
                     }
                     break;
@@ -126,6 +128,7 @@ namespace CourseWork
                 }
             }
 
+            // TODO: ALSO CHECK IF I'VE ALREADY ASKED FOR THIS BLOCK IN THIS PIECE!!!
             if (interestingPieceIndex >= 0)
             {
                 //ADD AN OUTGOING REQUEST to FileWorker
@@ -136,14 +139,17 @@ namespace CourseWork
                     {
                         // send AM_INTERESTED message
                         tuple.Item3.SendPeerMessage(MessageType.interested);
+                        tuple.Item3.SetAmInterested();
                     }
                 }
                 else
                 {
                     // send REQUEST message and add an outgoing request
-                    // if PIECE !requestedYet && BLOCK !requestedYet
                     Tuple<int, int> offsetAndSize = tuple.Item1.fileWorker.FindNextOffsetAndSize(interestingPieceIndex);
-                    tuple.Item3.SendPeerMessage(MessageType.request, interestingPieceIndex, offsetAndSize.Item1, offsetAndSize.Item2);
+                    // TODO: if it's null, then all blocks from this piece have been requested. Need to try another one or something
+                    if (offsetAndSize != null) {
+                        tuple.Item3.SendPeerMessage(MessageType.request, interestingPieceIndex, offsetAndSize.Item1, offsetAndSize.Item2);
+                    }
                 }
             }
             else
@@ -152,6 +158,7 @@ namespace CourseWork
                 {
                     // send AM_NOT_INTERESTED message
                     tuple.Item3.SendPeerMessage(MessageType.notInterested);
+                    tuple.Item3.SetAmNotInterested();
                 }
             }
         }

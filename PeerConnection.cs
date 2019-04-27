@@ -37,6 +37,8 @@ namespace CourseWork
         private TcpClient connectionClient;
         public CONNSTATES connectionState { get; private set; }
         private IPEndPoint endPoint;
+        private byte[] infoHash;
+        // do I need peerID here?..
 
         // need sync?
         // first int = piece number; second int = piece's block number
@@ -45,11 +47,10 @@ namespace CourseWork
 
         private int wrongCount;
 
-
         public delegate void MessageRecievedHandler(PeerMessage message, PeerConnection connection);
         private MessageRecievedHandler MsgRecieved;
 
-        public PeerConnection(IPEndPoint ep, MessageRecievedHandler handler, int piecesCount)
+        public PeerConnection(IPEndPoint ep, MessageRecievedHandler handler, int piecesCount, byte[] expectedInfoHash)
         {
             connectionState = 0;
             connectionState = CONNSTATES.AM_CHOKING | CONNSTATES.PEER_CHOKING;
@@ -60,6 +61,7 @@ namespace CourseWork
             wrongCount = 0;
 
             IncomingRequests = new LinkedList<Tuple<int, int>>();
+            infoHash = expectedInfoHash;
         }
 
 
@@ -72,7 +74,7 @@ namespace CourseWork
             await connectionClient.GetStream().WriteAsync(handshakeMessage.GetMsgContents(), 0, 
                 handshakeMessage.GetMsgContents().Length).ConfigureAwait(false);
 
-            var message = await RecievePeerMessage().ConfigureAwait(false);
+            var message = await RecieveHandshakeMessage().ConfigureAwait(false);
 
             //add checking if hash in the response is valid
             if (message == null || message.messageType != MessageType.handshake)
@@ -80,6 +82,17 @@ namespace CourseWork
                 return -1;
             }
             return 0;
+        }
+
+        private async Task<PeerMessage> RecieveHandshakeMessage()
+        {
+            var msg = new PeerMessage();
+            int result = await msg.GetAndDecodeHandshake(infoHash, connectionClient.GetStream());
+            if (result != 0)
+            {
+                return null;
+            }
+            return msg;
         }
 
         private async Task<PeerMessage> RecievePeerMessage()
@@ -128,7 +141,15 @@ namespace CourseWork
             // while (!cancelled) HERE!
             while (true)
             {
-                PeerMessage msg = await RecievePeerMessage();
+                PeerMessage msg = null;
+                try
+                {
+                    msg = await RecievePeerMessage();
+                }
+                catch
+                {
+                    // if something went wrong, send "null" instead of message. Connection will be closed
+                }
                 if (msg != null)
                 {
                     if (msg.messageType == MessageType.invalid)
@@ -139,61 +160,96 @@ namespace CourseWork
                         }
                         else
                         {
-                            MsgRecieved(null, this);
+                            msg = null;
+                            MsgRecieved(msg, this);
                         }
                     }
                 }
                 MsgRecieved(msg, this);
+                if (msg == null)
+                {
+                    break;
+                }
             }
         }
 
         public void CloseConnection()
         {
-            // remove connection from list of active connections!
             connectionClient.Close();
         }
 
         // ALL THE METHODS BELOW MAY BE CALLED FROM ANOTHER THREAD, SO THREAD-SAFETY MUST BE PROVIDED WHERE NEEDED //
 
         // enum updates are atomic
-        public void SetChoked()
+        public void SetPeerChoking()
         {
             connectionState |= CONNSTATES.PEER_CHOKING;
         }
 
-        public void SetUnchoked()
+        public void SetPeerUnchoking()
         {
             connectionState &= ~CONNSTATES.PEER_CHOKING;
         }
 
-        public void SetInterested()
+        public void SetPeerInterested()
         {
             connectionState |= CONNSTATES.PEER_INTERESTED;
         }
 
-        public void SetNotInterested()
+        public void SetPeerNotInterested()
         {
             connectionState &= ~CONNSTATES.PEER_INTERESTED;
         }
 
-        public void SetHave(int index)
+        public void SetPeerHave(int index)
         {
             peersPieces.Set(index, true);
         }
 
-        // TODO: FIX THIS
         public void SetBitField(PeerMessage message)
         {
             //int startOffset = PeerMessage.msgLenSpace + PeerMessage.msgTypeSpace;
             for (int i = message.rawBytesOffset; i < message.GetMsgContents().Length; i++)
             {
-                // NO LOCKING because only this thread uses these values
+                // NO LOCKING because only MessageHandler's thread uses these values
+                byte mask = 0b10000000;
+                byte curByte = message.GetMsgContents()[i];
                 for (int bit = 7; bit >= 0; bit--)
                 {
-                    peersPieces.Set((i - message.rawBytesOffset) * 8 + bit, true);
+                    if ((i - message.rawBytesOffset) * 8 + (7 - bit) > peersPieces.Count)
+                    {
+                        break;
+                    }
+                    peersPieces.Set((i - message.rawBytesOffset) * 8 + (7 - bit), (curByte & mask) == 1);
+                    mask >>= 1;
                 }
             }
         }
+
+        public void SetAmChoking()
+        {
+            connectionState |= CONNSTATES.AM_CHOKING;
+        }
+
+        public void SetAmUnchoking()
+        {
+            connectionState &= ~CONNSTATES.AM_CHOKING;
+        }
+
+        public void SetAmInterested()
+        {
+            connectionState |= CONNSTATES.AM_INTERESTED;
+        }
+
+        public void SetAmNotInterested()
+        {
+            connectionState &= ~CONNSTATES.AM_INTERESTED;
+        }
+
+        /*public void SetAmHave(int index)
+        {
+            peersPieces.Set(index, true);
+        }*/
 
         public void AddIncomingRequest(int piece, int offset)
         {
@@ -213,6 +269,7 @@ namespace CourseWork
             connectionClient.GetStream().Write(message.GetMsgContents(), 0, message.GetMsgContents().Length);
         }
 
+        // TODO: maybe I can move message creating to MessageHandler, and take as param only ready message
         /// <summary>
         /// Send "request" or "cancel" message
         /// </summary>

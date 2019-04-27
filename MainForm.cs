@@ -79,7 +79,7 @@ namespace CourseWork
                 var parser = new BencodeParser();
                 // exceptions: FileNotFound (System.IO, have a look!)
                 // BencodeNET.Exceptions.InvalidBencodeException
-                var torrent = parser.Parse<Torrent>("F:\\test.torrent");
+                var torrent = parser.Parse<Torrent>("F:\\test.torrent");//F:\\Music\\(Alternative Rock Modern Rock) Poets Of The Fall - Ultraviolet - 2018, MP3 (tracks), 320 kbps [rutracker-5623339].torrent");
                 var InfoWindow = new TorrentInfo(this, torrent);
 
                 InfoWindow.Show();
@@ -101,7 +101,8 @@ namespace CourseWork
             // add copying file to program's location (so we can keep track of opened torrents
             // AND be independent from original file)
 
-            var newSharedFile = new DownloadingFile(torrent, "F:\\test.torrent", "F:\\TORRENTTEST");
+            var newSharedFile = new DownloadingFile(this, torrent,
+                "F:\\test.torrent", "F:\\TORRENTTEST");//"F:\\Music\\(Alternative Rock Modern Rock) Poets Of The Fall - Ultraviolet - 2018, MP3 (tracks), 320 kbps [rutracker-5623339]", "F:\\TORRENTTEST");
 
             // idk if thread safety is needed. GUI windows are in the same thread, will anyone else use this list?..
             lock (filesList)
@@ -138,12 +139,12 @@ namespace CourseWork
 
             if (InvokeRequired)
             {
-                Invoke(new MethodInvoker(() => FilesArea.Items[FilesArea.Items.IndexOf(newFile)].GetSubItemAt(0, 0).Text =
+                Invoke(new MethodInvoker(() => FilesArea.Items[FilesArea.Items.IndexOf(newFile)].SubItems[2].Text =
                     curMsg));
             }
             else
             {
-                FilesArea.Items[FilesArea.Items.IndexOf(newFile)].GetSubItemAt(0, 0).Text =
+                FilesArea.Items[FilesArea.Items.IndexOf(newFile)].SubItems[2].Text =
                     curMsg;
             }
 

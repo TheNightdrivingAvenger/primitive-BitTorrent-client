@@ -12,19 +12,23 @@ namespace CourseWork
 {
     public enum DownloadState { queued, downloading, stopped };
 
+    // need a timer for tracker reconnections, choking-unchoking
     class DownloadingFile // need to save objects on disk somehow; later
     {
         public string infoFilePath { get; private set; }
         public string downloadPath { get; private set; }
         public DownloadState state { get; set; }
+        // doesn't seem like I access piece from anywhere except for MessageHandler's thread
         public BitArray pieces { get; private set; }
+
         public long trackerInterval { get; set; }
         public long trackerMinInterval { get; set; }
         public string trackerID { get; set; }
+
         public LinkedList<IPEndPoint> peersAddr { get; private set; }
         public LinkedList<PeerConnection> connectedPeers { get; private set; }
+
         public long downloaded { get; private set; }
-        //public long left { get; private set; }
         public long totalSize { get; private set; }
 
         public Torrent torrentContents { get; }
@@ -35,8 +39,10 @@ namespace CourseWork
         public static MessageHandler messageHandler;
 
         // block size of 16384 is recommended and highly unlikely will change
-        public DownloadingFile(Torrent torrent, string infoFilePath, string downloadPath)
+        public DownloadingFile(MainForm ownerForm, Torrent torrent, string infoFilePath, string downloadPath)
         {
+            this.ownerForm = ownerForm;
+
             pieces = new BitArray(torrent.NumberOfPieces);
             peersAddr = new LinkedList<IPEndPoint>();
             connectedPeers = new LinkedList<PeerConnection>();
@@ -45,7 +51,7 @@ namespace CourseWork
             torrentContents = torrent;
             this.infoFilePath = infoFilePath;
             this.downloadPath = downloadPath;
-            fileWorker = new FileWorker(torrentContents.PieceSize, downloadPath, torrentContents, 16384);
+            fileWorker = new FileWorker(torrentContents.PieceSize, downloadPath, torrentContents, 16384, SavedToDisk);
             totalSize = fileWorker.totalSize;
         }
 
@@ -60,7 +66,7 @@ namespace CourseWork
             state = DownloadState.downloading;
             foreach (var peer in peersAddr)
             {
-                var connection = new PeerConnection(peer, MessageRecieved, pieces.Count);
+                var connection = new PeerConnection(peer, MessageRecieved, pieces.Count, torrentContents.OriginalInfoHashBytes);
                 try
                 {
                     if (await connection.PeerHandshake(torrentContents.OriginalInfoHashBytes, ownerForm.myPeerID) == 0)
@@ -69,12 +75,20 @@ namespace CourseWork
                         {
                             connectedPeers.AddLast(connection);
                         }
+                        connection.StartPeerMessageLoop();
+                        // TODO: DEBUG ONLY
+                        //break;
                     } else
                     {
                         connection.CloseConnection();
                     }
                 }
                 catch (SocketException ex)
+                {
+                    connection.CloseConnection();
+                }
+                // IO for some reason if host reset the connection :/
+                catch (System.IO.IOException)
                 {
                     connection.CloseConnection();
                 }
@@ -87,7 +101,9 @@ namespace CourseWork
             if (msg == null)
             {
                 connection.CloseConnection();
-                // remove the connection from the list!
+                connectedPeers.Remove(connection);
+                // remove the connection from the list! Will it work like this?
+                // It should be equal by reference too tho
             }
             else
             {
@@ -96,6 +112,17 @@ namespace CourseWork
         }
 
         // called from separate thread, synchronisation is needed
-
+        private void SavedToDisk(int pieceIndex)
+        {
+            if (pieceIndex == torrentContents.NumberOfPieces - 1)
+            {
+                downloaded += fileWorker.lastPieceSize;
+            }
+            else
+            {
+                downloaded += torrentContents.PieceSize;
+            }
+            pieces[pieceIndex] = true;
+        }
     }
 }

@@ -25,6 +25,8 @@ namespace CourseWork
         public int pieceIndex { get; private set; } = -1;
         public int pieceOffset { get; private set; } = -1;
         public int length { get; private set; } = -1;
+        // raw bytes: "block" in "piece" message;
+        //            "bitfield" in "bitfield" message;
         public int rawBytesOffset { get; private set; } = -1;
 
         private const int pstrLenSpace = 1;
@@ -52,6 +54,59 @@ namespace CourseWork
         {
             msgContents = new byte[msgLenSpace];
             messageType = MessageType.unknown;
+        }
+
+        // TODO: make awaiting for a response not infinite!
+        public async Task<int> GetAndDecodeHandshake(byte[] expectedInfoHash, NetworkStream stream)
+        {
+            messageType = MessageType.invalid;
+            Array.Resize(ref msgContents, pstrLenSpace + pstr.Length + reservedLen + 20 + 20);
+            int readres = 0;
+            int read = 0;
+            int bufOffset = 0;
+
+            while (read < msgContents.Length)
+            {
+                // exceptions
+                readres = await stream.ReadAsync(msgContents, bufOffset, msgContents.Length - read);
+                if (readres == 0)
+                {
+                    messageType = MessageType.invalid;
+                    return 1;
+                }
+                read += readres;
+                bufOffset = read;
+            }
+
+            if (msgContents[0] != pstr.Length)
+            {
+                return 2;
+            }
+            if (Encoding.ASCII.GetString(msgContents, 1, pstr.Length) != pstr)
+            {
+                return 2;
+            }
+            if (!CompareHashes(expectedInfoHash))
+            {
+                return 2;
+            }
+            messageType = MessageType.handshake;
+            return 0;
+        }
+
+        private bool CompareHashes(byte[] expected)
+        {
+            int i = 0;
+            int msgOffset = pstrLenSpace + pstr.Length + reservedLen;
+            while (i < expected.Length && (expected[i] == msgContents[i + msgOffset]))
+            {
+                i++;
+            }
+            if (i == expected.Length)
+            {
+                return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -130,7 +185,7 @@ namespace CourseWork
         /// <param name="length">Specifies the requested (cancelled) block's length</param>
         public PeerMessage(MessageType type, int index, int begin, int length)
         {
-            if (type != MessageType.request || type != MessageType.cancel)
+            if (!(type == MessageType.request || type == MessageType.cancel))
             {
                 throw new ArgumentException("Type of the message must be \"request\" or \"cancel\"");
             }
@@ -177,7 +232,7 @@ namespace CourseWork
         /// 0 on success</returns>
         public async Task<int> GetAndDecode(NetworkStream stream, int expectedBitfieldLength)
         {
-            int msgLen = HTONNTOH(BitConverter.ToInt32(msgContents, 0));
+            int msgLen = BitConverter.ToInt32(HTONNTOH(msgContents), 0);
             // also can do something if the length is way too big
             if (msgLen == 0)
             {
@@ -206,7 +261,7 @@ namespace CourseWork
             // TODO: move checking to MessageHandler probably
             if (msgContents[msgLenSpace] == 5)
             {
-                int bitsCount = msgLen * 8;
+                int bitsCount = (msgLen - msgTypeSpace) * 8;
 
                 if (bitsCount < expectedBitfieldLength || bitsCount > expectedBitfieldLength + 7)
                 {
@@ -246,7 +301,7 @@ namespace CourseWork
                     this.pieceIndex = BitConverter.ToInt32(HTONNTOH(num), 0);
                     break;
                 case MessageType.bitfield:
-                    //tuple.Item3.SetBitField(tuple.Item2.GetMsgContents());
+                    this.rawBytesOffset = msgLenSpace + msgTypeSpace;
                     break;
                 case MessageType.request:
                 case MessageType.cancel:
@@ -275,7 +330,7 @@ namespace CourseWork
             }
             return 0;
         }
-
+        /*
         /// <summary>
         /// Performs host to network and vise-versa conversion of signed 32-bit integer
         /// </summary>
@@ -289,8 +344,13 @@ namespace CourseWork
                 Array.Reverse(bytesArr);
             }
             return BitConverter.ToInt32(bytesArr, 0);
-        }
+        }*/
 
+        /// <summary>
+        /// Performs host to network and vise-versa conversion of signed 32-bit integer
+        /// </summary>
+        /// <param name="bytes">Number to convert (as 4 bytes array)</param>
+        /// <returns>Array with needed byte order (use BitConverter to get the number)</returns>
         public static byte[] HTONNTOH(byte[] bytes)
         {
             if (BitConverter.IsLittleEndian)
