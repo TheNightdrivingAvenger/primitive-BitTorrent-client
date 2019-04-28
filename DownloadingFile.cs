@@ -76,7 +76,7 @@ namespace CourseWork
                             connectedPeers.AddLast(connection);
                         }
                         connection.StartPeerMessageLoop();
-                        // TODO: DEBUG ONLY
+                        // TODO: DEBUG ONLY (only first working connection)
                         //break;
                     } else
                     {

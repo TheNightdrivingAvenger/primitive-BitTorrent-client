@@ -23,7 +23,7 @@ namespace CourseWork
         {
             //By default, the storage for a System.Collections.Concurrent.BlockingCollection<T> 
             //is System.Collections.Concurrent.ConcurrentQueue<T>.
-            //why exactly 500? Idk, OK for now
+            // TODO: why exactly maxQueueLength? Idk, OK for now
             messageQueue = new BlockingCollection<Tuple<DownloadingFile, PeerMessage, PeerConnection>>(maxQueueLength);
             isStarted = false;
             this.downloadingFiles = downloadingFiles;
@@ -50,7 +50,7 @@ namespace CourseWork
                 Tuple<DownloadingFile, PeerMessage, PeerConnection> msg;
                 try
                 {
-                    // It's a good idea to not block here, but instead go and check if there're any
+                    // TODO: It's a good idea to not block here, but instead go and check if there're any
                     // requests for me to send blocks. If there are, then go and send a couple of messages to peers
                     // (keep-alives maybe, "pieces")
                     msg = messageQueue.Take();
@@ -69,9 +69,8 @@ namespace CourseWork
             switch (tuple.Item2.messageType)
             {
                 case MessageType.keepAlive:
-                    // send a response?
-                    // reset the activity timer
-                    break;
+                    // TODO: reset the activity timer
+                    return; // return because I don't need to call "ConnectionStateChanged"
                 case MessageType.choke:
                     tuple.Item3.SetPeerChoking();
                     break;
@@ -83,6 +82,11 @@ namespace CourseWork
                     break;
                 case MessageType.notInterested:
                     tuple.Item3.SetPeerNotInterested();
+                    if (!tuple.Item3.connectionState.HasFlag(CONNSTATES.AM_CHOKING))
+                    {
+                        tuple.Item3.SendPeerMessage(MessageType.choke);
+                        tuple.Item3.SetAmChoking();
+                    }
                     break;
                 case MessageType.have:
                     tuple.Item3.SetPeerHave(tuple.Item2.pieceIndex);
@@ -91,7 +95,7 @@ namespace CourseWork
                     tuple.Item3.SetBitField(tuple.Item2);
                     break;
                 case MessageType.request:
-                    // add pending !INCOMING! piece to FileWorker's list! (if it's not there yet)
+                    // add pending !INCOMING! piece request to FileWorker's list! (if it's not there yet)
                     break;
                 case MessageType.piece:
                     // CHECK IF PIECE (BLOCK) SIZE IS CORRECT! (<= 2^14)
@@ -105,7 +109,7 @@ namespace CourseWork
                     }
                     break;
                 case MessageType.cancel:
-                    // remove from pending incoming requests (whatever this means now)
+                    // TODO: remove from pending incoming requests (whatever this means now)
                     break;
                 case MessageType.port:
                     break;
@@ -128,10 +132,8 @@ namespace CourseWork
                 }
             }
 
-            // TODO: ALSO CHECK IF I'VE ALREADY ASKED FOR THIS BLOCK IN THIS PIECE!!!
             if (interestingPieceIndex >= 0)
             {
-                //ADD AN OUTGOING REQUEST to FileWorker
                 // if I'm choked
                 if (tuple.Item3.connectionState.HasFlag(CONNSTATES.PEER_CHOKING))
                 {

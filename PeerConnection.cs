@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CourseWork
@@ -87,7 +88,8 @@ namespace CourseWork
         private async Task<PeerMessage> RecieveHandshakeMessage()
         {
             var msg = new PeerMessage();
-            int result = await msg.GetAndDecodeHandshake(infoHash, connectionClient.GetStream());
+            // 5000 -- cancel receiving handshake if peer hasn't responded in 5 seconds
+            int result = await msg.GetAndDecodeHandshake(infoHash, connectionClient.GetStream(), 5000);
             if (result != 0)
             {
                 return null;
@@ -216,7 +218,7 @@ namespace CourseWork
                 byte curByte = message.GetMsgContents()[i];
                 for (int bit = 7; bit >= 0; bit--)
                 {
-                    if ((i - message.rawBytesOffset) * 8 + (7 - bit) > peersPieces.Count)
+                    if ((i - message.rawBytesOffset) * 8 + (7 - bit) >= peersPieces.Count)
                     {
                         break;
                     }

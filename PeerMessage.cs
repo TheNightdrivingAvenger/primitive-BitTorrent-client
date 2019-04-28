@@ -3,6 +3,7 @@ using System.Collections;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 // MESSAGE LENGTH DOES NOT INCLUDE 4 BYTES THAT CONTAIN LENGTH ITSELF
@@ -56,8 +57,14 @@ namespace CourseWork
             messageType = MessageType.unknown;
         }
 
-        // TODO: make awaiting for a response not infinite!
-        public async Task<int> GetAndDecodeHandshake(byte[] expectedInfoHash, NetworkStream stream)
+        // Making only handshake time limited because it's the first and crucial message;
+        // if it's delayed then there're probably some problems with connection to peer
+        // or peer is faulting. Other (subsequent) messages may be large, and connection
+        // after handshake is believed to be stable, so if something happens we wait until
+        // some TCP error or something else, which will lead to connection closing
+
+        // TODO: ✓ make awaiting for a response not infinite!
+        public async Task<int> GetAndDecodeHandshake(byte[] expectedInfoHash, NetworkStream stream, int delay)
         {
             messageType = MessageType.invalid;
             Array.Resize(ref msgContents, pstrLenSpace + pstr.Length + reservedLen + 20 + 20);
@@ -67,15 +74,27 @@ namespace CourseWork
 
             while (read < msgContents.Length)
             {
-                // exceptions
-                readres = await stream.ReadAsync(msgContents, bufOffset, msgContents.Length - read);
-                if (readres == 0)
+                var handshakeCancellationTokenSource = new CancellationTokenSource();
+                try
                 {
-                    messageType = MessageType.invalid;
+                    handshakeCancellationTokenSource.CancelAfter(delay);
+                    readres = await stream.ReadAsync(msgContents, bufOffset, msgContents.Length - read, handshakeCancellationTokenSource.Token);
+                    if (readres == 0)
+                    {
+                        messageType = MessageType.invalid;
+                        return 1;
+                    }
+                    read += readres;
+                    bufOffset = read;
+                }
+                catch // I don't care what exception occured (network error or time-out), it's all failure
+                {
                     return 1;
                 }
-                read += readres;
-                bufOffset = read;
+                finally
+                {
+                    handshakeCancellationTokenSource.Dispose();
+                }
             }
 
             if (msgContents[0] != pstr.Length)
@@ -232,6 +251,9 @@ namespace CourseWork
         /// 0 on success</returns>
         public async Task<int> GetAndDecode(NetworkStream stream, int expectedBitfieldLength)
         {
+            // no copy because msgContents is only 4 bytes long at this point and contains only BE message length
+            //byte[] len = new byte[msgLenSpace];
+            //Array.Copy(msgContents, 0, len, 0, msgLenSpace);
             int msgLen = BitConverter.ToInt32(HTONNTOH(msgContents), 0);
             // also can do something if the length is way too big
             if (msgLen == 0)
@@ -254,7 +276,7 @@ namespace CourseWork
                     return 1;
                 }
                 read += readres;
-                bufOffset = read;
+                bufOffset += readres;
             }
 
             // additional checking for a bitfield

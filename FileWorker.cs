@@ -8,6 +8,7 @@ using BencodeNET.Torrents;
 
 namespace CourseWork
 {
+    // TODO: don't forget to command from DownloadingFile to close all the streams
     public class FileWorker
     {
         // element contains piece index, buffer actual (used) size, piece buffer and BitArray describing the piece
@@ -16,7 +17,7 @@ namespace CourseWork
         private int blockSize;
         private string rootDir;
         Torrent torrent;
-        public int lastPieceSize { get; private set; }
+        public long lastPieceSize { get; private set; }
         public long totalSize { get; private set; }
 
         private FileStream[] files;
@@ -54,7 +55,9 @@ namespace CourseWork
                     totalSize += fileInfo.FileSize;
                 }
             }
+            // totalSize - ...!
             lastPieceSize = (int)(torrent.NumberOfPieces * torrent.PieceSize - totalSize);
+            lastPieceSize = (lastPieceSize == 0) ? torrent.PieceSize : torrent.PieceSize - lastPieceSize;
 
             this.rootDir = rootDir;
             this.torrent = torrent;
@@ -119,15 +122,15 @@ namespace CourseWork
             {
                 // how many blocks are in the last piece?
                 totalBlocks = (int)Math.Ceiling((double)lastPieceSize / blockSize);
-                int size = totalBlocks * blockSize - lastPieceSize;
-                return size == 0 ? blockSize : size;
+                int size = (int)(totalBlocks * blockSize - lastPieceSize);
+                return size == 0 ? blockSize : blockSize - size;
             }
             else
             {
                 // how many blocks are in a regular piece?
                 totalBlocks = (int)Math.Ceiling((double)torrent.PieceSize / blockSize);
                 int size = (int)(totalBlocks * blockSize - torrent.PieceSize);
-                return size == 0 ? blockSize : size;
+                return size == 0 ? blockSize : blockSize - size;
             }
         }
 
@@ -165,7 +168,7 @@ namespace CourseWork
                         Array.Copy(block, 0, entry.Value.pieceBuffer, offset, block.Length);
                         entry.Value.blocksMap[offset / blockSize] = true;
                         entry.Value.bufferSize += block.Length;
-                        
+
                         if (entry.Value.bufferSize == entry.Value.pieceBuffer.Length)
                         {
                             // check SHA1 and save to disk if OK
@@ -178,7 +181,7 @@ namespace CourseWork
                             }
                             else
                             {
-                                // need to download the whole piece again
+                                // if not, need to download the whole piece again
                                 entry.Value.blocksMap.SetAll(false);
                                 entry.Value.requestedBlocksMap.SetAll(false);
                                 entry.Value.bufferSize = 0;
@@ -199,7 +202,7 @@ namespace CourseWork
 
         private bool SaveToDisk(PieceInfoNode entry)
         {
-           /* byte[] hashResult;
+            byte[] hashResult;
             // something is wrong with resulting hash..
             using (SHA1 hasher = new SHA1CryptoServiceProvider())
             {
@@ -210,7 +213,7 @@ namespace CourseWork
             {
                 // an error here.. TODO: Need to drop the piece and mark it as available for downloading
                 return false;
-            }*/
+            }
             
 
             // is data reliable? Won't I jump off the file boundaries?..
@@ -226,11 +229,15 @@ namespace CourseWork
             // offset in the target [i - 1] file
             fileOffset -= curOffset - files[i - 1].Length;
             files[i - 1].Seek(fileOffset, SeekOrigin.Begin);
+            
             int countToWrite = files[i - 1].Length - fileOffset >= entry.pieceBuffer.Length ? entry.pieceBuffer.Length :
                 (int)(files[i - 1].Length - fileOffset);
+            // TODO: DEBUG ONLY!
+            //int countToWrite = entry.pieceBuffer.Length;
 
             // async would be nice, but what about synchronization then?
             files[i - 1].Write(entry.pieceBuffer, 0, countToWrite);
+            files[i - 1].Flush(true);
             // can get an "Out of range" if the next file doesn't exist. Need to watch out for this if peer sends wrong data!
             if (countToWrite < entry.pieceBuffer.Length)
             {
