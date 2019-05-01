@@ -31,14 +31,14 @@
             this.AddTorrentOK = new System.Windows.Forms.Button();
             this.AddTorrentCancel = new System.Windows.Forms.Button();
             this.ContentsBox = new System.Windows.Forms.GroupBox();
+            this.DateLblContents = new System.Windows.Forms.Label();
+            this.DescriptionLblContents = new System.Windows.Forms.Label();
+            this.SizeLblContents = new System.Windows.Forms.Label();
             this.NameLblContents = new System.Windows.Forms.Label();
             this.DateLbl = new System.Windows.Forms.Label();
             this.DescriptionLbl = new System.Windows.Forms.Label();
             this.SizeLbl = new System.Windows.Forms.Label();
             this.NameLbl = new System.Windows.Forms.Label();
-            this.SizeLblContents = new System.Windows.Forms.Label();
-            this.DescriptionLblContents = new System.Windows.Forms.Label();
-            this.DateLblContents = new System.Windows.Forms.Label();
             this.ContentsBox.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -60,6 +60,7 @@
             this.AddTorrentCancel.TabIndex = 1;
             this.AddTorrentCancel.Text = "Cancel";
             this.AddTorrentCancel.UseVisualStyleBackColor = true;
+            this.AddTorrentCancel.Click += new System.EventHandler(this.AddTorrentCancel_Click);
             // 
             // ContentsBox
             // 
@@ -77,6 +78,33 @@
             this.ContentsBox.TabIndex = 2;
             this.ContentsBox.TabStop = false;
             this.ContentsBox.Text = "Сведения о содержании";
+            // 
+            // DateLblContents
+            // 
+            this.DateLblContents.AutoSize = true;
+            this.DateLblContents.Location = new System.Drawing.Point(96, 99);
+            this.DateLblContents.Name = "DateLblContents";
+            this.DateLblContents.Size = new System.Drawing.Size(12, 17);
+            this.DateLblContents.TabIndex = 10;
+            this.DateLblContents.Text = " ";
+            // 
+            // DescriptionLblContents
+            // 
+            this.DescriptionLblContents.AutoSize = true;
+            this.DescriptionLblContents.Location = new System.Drawing.Point(96, 71);
+            this.DescriptionLblContents.Name = "DescriptionLblContents";
+            this.DescriptionLblContents.Size = new System.Drawing.Size(12, 17);
+            this.DescriptionLblContents.TabIndex = 9;
+            this.DescriptionLblContents.Text = " ";
+            // 
+            // SizeLblContents
+            // 
+            this.SizeLblContents.AutoSize = true;
+            this.SizeLblContents.Location = new System.Drawing.Point(96, 44);
+            this.SizeLblContents.Name = "SizeLblContents";
+            this.SizeLblContents.Size = new System.Drawing.Size(12, 17);
+            this.SizeLblContents.TabIndex = 8;
+            this.SizeLblContents.Text = " ";
             // 
             // NameLblContents
             // 
@@ -122,33 +150,6 @@
             this.NameLbl.Size = new System.Drawing.Size(39, 17);
             this.NameLbl.TabIndex = 0;
             this.NameLbl.Text = "Имя:";
-            // 
-            // SizeLblContents
-            // 
-            this.SizeLblContents.AutoSize = true;
-            this.SizeLblContents.Location = new System.Drawing.Point(96, 44);
-            this.SizeLblContents.Name = "SizeLblContents";
-            this.SizeLblContents.Size = new System.Drawing.Size(12, 17);
-            this.SizeLblContents.TabIndex = 8;
-            this.SizeLblContents.Text = " ";
-            // 
-            // DescriptionLblContents
-            // 
-            this.DescriptionLblContents.AutoSize = true;
-            this.DescriptionLblContents.Location = new System.Drawing.Point(96, 71);
-            this.DescriptionLblContents.Name = "DescriptionLblContents";
-            this.DescriptionLblContents.Size = new System.Drawing.Size(12, 17);
-            this.DescriptionLblContents.TabIndex = 9;
-            this.DescriptionLblContents.Text = " ";
-            // 
-            // DateLblContents
-            // 
-            this.DateLblContents.AutoSize = true;
-            this.DateLblContents.Location = new System.Drawing.Point(96, 99);
-            this.DateLblContents.Name = "DateLblContents";
-            this.DateLblContents.Size = new System.Drawing.Size(12, 17);
-            this.DateLblContents.TabIndex = 10;
-            this.DateLblContents.Text = " ";
             // 
             // TorrentInfo
             // 

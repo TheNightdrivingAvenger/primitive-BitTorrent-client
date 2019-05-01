@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace CourseWork
 {
-    class MessageHandler
+    public class MessageHandler
     {
         // when we've got nothing to do, we go and check downloading files
         // (only active right now I guess) and their connections to see if
@@ -71,20 +71,24 @@ namespace CourseWork
                 case MessageType.keepAlive:
                     // TODO: reset the activity timer
                     return; // return because I don't need to call "ConnectionStateChanged"
+                    // maybe if I have some pending requests on this connection and do not receive them, I could send "cancel"
+                    // and then ask for blocks somewhere else
                 case MessageType.choke:
                     tuple.Item3.SetPeerChoking();
+                    tuple.Item1.ReceivedChokeOrDisconnected(tuple.Item3);
                     break;
                 case MessageType.unchoke:
                     tuple.Item3.SetPeerUnchoking();
                     break;
                 case MessageType.interested:
                     tuple.Item3.SetPeerInterested();
+                    // TODO: choking-unchoking algorithms and stuff
                     break;
                 case MessageType.notInterested:
                     tuple.Item3.SetPeerNotInterested();
                     if (!tuple.Item3.connectionState.HasFlag(CONNSTATES.AM_CHOKING))
                     {
-                        tuple.Item3.SendPeerMessage(MessageType.choke);
+                        tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.choke));
                         tuple.Item3.SetAmChoking();
                     }
                     break;
@@ -99,72 +103,113 @@ namespace CourseWork
                     break;
                 case MessageType.piece:
                     // CHECK IF PIECE (BLOCK) SIZE IS CORRECT! (<= 2^14)
-                    // TODO: move this check to FileWorker
+                    // TODO: move this check to FileWorker/DownloadingFile
                     if (tuple.Item2.GetMsgContents().Length - tuple.Item2.rawBytesOffset <= 16384)
                     {
                         byte[] block = new byte[tuple.Item2.GetMsgContents().Length - tuple.Item2.rawBytesOffset];
                         Array.Copy(tuple.Item2.GetMsgContents(), tuple.Item2.rawBytesOffset, block, 0, block.Length);
-                        //// if true then we got the block. Can actually avoid conditional, but idk what's faster (old ver)
-                        tuple.Item1.fileWorker.AddBlock(tuple.Item2.pieceIndex, tuple.Item2.pieceOffset, block);
+                        // for now it sends "HAVE" messages by itself, but for consistency it could be better
+                        // if this method would do this, because it controls all other behavior of connection
+                        tuple.Item1.AddBlock(tuple.Item2.pieceIndex, tuple.Item2.pieceOffset, block);
                     }
+                    tuple.Item3.RemoveOutgoingRequest(tuple.Item2.pieceIndex, tuple.Item2.pieceOffset);
+                    //tuple.Item3.pendingOutgoingRequestsCount--;
                     break;
                 case MessageType.cancel:
                     // TODO: remove from pending incoming requests (whatever this means now)
                     break;
                 case MessageType.port:
-                    break;
+                    return;
             }
             ConnectionStateChanged(tuple);
         }
 
         private void ConnectionStateChanged(Tuple<DownloadingFile, PeerMessage, PeerConnection> tuple)
         {
-            
-            // See if the peer have something to offer
-            int interestingPieceIndex = -1;
-            // no synchronization because only this thread can read and modify connection.peersPieces values
-            for (int i = 0; i < tuple.Item3.peersPieces.Length; i++)
+            bool interestingPieces = tuple.Item1.PeerHasInterestingPieces(tuple.Item3);
+            if (tuple.Item3.connectionState.HasFlag(CONNSTATES.PEER_CHOKING))
             {
-                if (tuple.Item1.pieces[i] == false && tuple.Item3.peersPieces[i] == true)
+                if (tuple.Item3.connectionState.HasFlag(CONNSTATES.AM_INTERESTED))
                 {
-                    interestingPieceIndex = i;
-                    break;
-                }
-            }
-
-            if (interestingPieceIndex >= 0)
-            {
-                // if I'm choked
-                if (tuple.Item3.connectionState.HasFlag(CONNSTATES.PEER_CHOKING))
-                {
-                    if (!tuple.Item3.connectionState.HasFlag(CONNSTATES.AM_INTERESTED))
+                    if (!interestingPieces)
                     {
-                        // send AM_INTERESTED message
-                        tuple.Item3.SendPeerMessage(MessageType.interested);
-                        tuple.Item3.SetAmInterested();
+                        tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.notInterested));
+                        tuple.Item3.SetAmNotInterested();
                     }
                 }
                 else
                 {
-                    // send REQUEST message and add an outgoing request
-                    Tuple<int, int> offsetAndSize = tuple.Item1.fileWorker.FindNextOffsetAndSize(interestingPieceIndex);
-                    // TODO: if it's null, then all blocks from this piece have been requested. Need to try another one or something
-                    if (offsetAndSize != null) {
-                        tuple.Item3.SendPeerMessage(MessageType.request, interestingPieceIndex, offsetAndSize.Item1, offsetAndSize.Item2);
+                    if (interestingPieces)
+                    {
+                        tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.interested));
+                        tuple.Item3.SetAmInterested();
                     }
                 }
             }
             else
             {
-                if (tuple.Item3.connectionState.HasFlag(CONNSTATES.AM_INTERESTED))
+                if (!interestingPieces && tuple.Item3.outgoingRequestsCount == 0)
                 {
-                    // send AM_NOT_INTERESTED message
-                    tuple.Item3.SendPeerMessage(MessageType.notInterested);
+                    tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.notInterested));
                     tuple.Item3.SetAmNotInterested();
                 }
+                else if (interestingPieces && tuple.Item3.outgoingRequestsCount < tuple.Item3.maxPendingOutgoingRequestsCount)
+                {
+                    // TODO: try to optimize this
+                    Tuple<int, int, int> nextRequest = tuple.Item1.FindNextRequest(tuple.Item3);
+                    // <= because last ++ (if nextRequest is not null) occured in FindNextRequest, so we need to send
+                    // this newly added request
+                    while (nextRequest != null && tuple.Item3.outgoingRequestsCount <= tuple.Item3.maxPendingOutgoingRequestsCount)
+                    {
+                        tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.request, nextRequest.Item1,
+                            nextRequest.Item2, nextRequest.Item3));
+                        //tuple.Item3.AddOutgoingRequest(nextRequest.Item1, nextRequest.Item2);
+
+                        if (tuple.Item3.outgoingRequestsCount < tuple.Item3.maxPendingOutgoingRequestsCount)
+                        {
+                            nextRequest = tuple.Item1.FindNextRequest(tuple.Item3);
+                            //tuple.Item3.AddOutgoingRequest(nextRequest.Item1, nextRequest.Item2);
+                        }
+                        else
+                        {
+                            nextRequest = null;
+                        }
+                    }
+                }
             }
+
+
+            /*Tuple<int, int, int> nextRequest = tuple.Item1.FindNextRequest(tuple.Item3);
+        
+            if (nextRequest != null)
+            {
+                // if Peer is choking me, need to tell him I'm interested
+                if (tuple.Item3.connectionState.HasFlag(CONNSTATES.PEER_CHOKING))
+                {
+                    if (!tuple.Item3.connectionState.HasFlag(CONNSTATES.AM_INTERESTED))
+                    {
+                        // send AM_INTERESTED message
+                        tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.interested));
+                        tuple.Item3.SetAmInterested();
+                    }
+                }
+                else
+                {
+                    tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.request, nextRequest.Item1,
+                        nextRequest.Item2, nextRequest.Item3));
+                }
+            } // TODO: send "not interested" ONLY when peer has no interesting pieces AND I've really requested blocks
+            // and got all that I requested
+            else if (tuple.Item3.connectionState.HasFlag(CONNSTATES.AM_INTERESTED))
+            {
+                tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.notInterested));
+                tuple.Item3.SetAmNotInterested();
+            }*/
         }
 
+        // System.InvalidOperationException: 'Коллекция была помечена, как завершенная, с учетом добавлений.'
+        // TODO: can happen if I've closed the main form (and stopped the MessageHandler),
+        // but connections are still active and try to add messages to the queue
         public void AddTask(Tuple<DownloadingFile, PeerMessage, PeerConnection> messageFromDownload)
         {
             messageQueue.Add(messageFromDownload);

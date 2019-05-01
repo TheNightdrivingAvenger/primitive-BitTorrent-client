@@ -20,7 +20,7 @@ namespace CourseWork
         public TorrentInfo(Form owner, Torrent torrent)
         {
             InitializeComponent();
-
+            
             this.Owner = owner;
             this.pendingTorrent = torrent;
 
@@ -35,7 +35,7 @@ namespace CourseWork
             }
             else
             {
-                DateLblContents.Text = "Неизвестно";
+                DateLblContents.Text = "Unknown";
             }
         }
 
@@ -44,6 +44,12 @@ namespace CourseWork
             //FileWorker.AddNewTorrentAsync();
             // add it to GUI, then wait
             ((MainForm)Owner).TorrentSubmitted(pendingTorrent);
+            this.Close();
+        }
+
+        private void AddTorrentCancel_Click(object sender, EventArgs e)
+        {
+            pendingTorrent = null;
             this.Close();
         }
     }

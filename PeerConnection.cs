@@ -41,11 +41,16 @@ namespace CourseWork
         private byte[] infoHash;
         // do I need peerID here?..
 
+        // contains piece number and block offset or null if cell is empty
+        public Tuple<int, int>[] outgoingRequests;
+        public int outgoingRequestsCount;
+
         // need sync?
         // first int = piece number; second int = piece's block number
         public LinkedList<Tuple<int, int>> IncomingRequests { get; private set; }
 
-
+        // hide it or make a property or something...
+        public int maxPendingOutgoingRequestsCount;
         private int wrongCount;
 
         public delegate void MessageRecievedHandler(PeerMessage message, PeerConnection connection);
@@ -60,9 +65,12 @@ namespace CourseWork
             endPoint = ep;
             MsgRecieved = handler;
             wrongCount = 0;
+            maxPendingOutgoingRequestsCount = 10;
 
             IncomingRequests = new LinkedList<Tuple<int, int>>();
             infoHash = expectedInfoHash;
+            outgoingRequests = new Tuple<int, int>[maxPendingOutgoingRequestsCount];
+            outgoingRequestsCount = 0;
         }
 
 
@@ -150,7 +158,7 @@ namespace CourseWork
                 }
                 catch
                 {
-                    // if something went wrong, send "null" instead of message. Connection will be closed
+                    // if something went wrong, dispatch "null" instead of a message. Connection will be closed
                 }
                 if (msg != null)
                 {
@@ -262,40 +270,53 @@ namespace CourseWork
             }
         }
 
-        public void SendPeerMessage(MessageType type)
+        public void SendPeerMessage(PeerMessage message)
         {
-            // reset the activity timer
-            var message = new PeerMessage(type);
-
-            // exceptions!
             connectionClient.GetStream().Write(message.GetMsgContents(), 0, message.GetMsgContents().Length);
         }
 
-        // TODO: maybe I can move message creating to MessageHandler, and take as param only ready message
-        /// <summary>
-        /// Send "request" or "cancel" message
-        /// </summary>
-        /// <param name="type"></param>
-        /// <param name="index"></param>
-        /// <param name="begin"></param>
-        /// <param name="length"></param>
-        public void SendPeerMessage(MessageType type, int index, int begin, int length)
+        public void AddOutgoingRequest(int pieceIndex, int offset)
         {
-            var message = new PeerMessage(type, index, begin, length);
-
-            // exceptions!
-            connectionClient.GetStream().Write(message.GetMsgContents(), 0, message.GetMsgContents().Length);
-            // add to outgoing requests!
+            // can it be possible that we didn't find a place? Probly not,
+            // because calling code must track this
+            bool placeFound = false;
+            for (int i = 0; i < outgoingRequests.Length && !placeFound; i++)
+            {
+                if (outgoingRequests[i] == null)
+                {
+                    outgoingRequests[i] = new Tuple<int, int>(pieceIndex, offset);
+                    placeFound = true;
+                }
+            }
+            if (!placeFound)
+            {
+                throw new IndexOutOfRangeException("No place has been found for new request");
+            }
+            else
+            {
+                outgoingRequestsCount++;
+            }
         }
 
-        public void SendPeerMessage(int index, int begin /*, byte[] block*/)
+        public void RemoveOutgoingRequest(int pieceIndex, int offset)
         {
-
-        }
-
-        public void SendPeerMessage(int pieceIndex)
-        {
-
+            bool entryFound = false;
+            for (int i = 0; i < outgoingRequests.Length && !entryFound; i++)
+            {
+                if (outgoingRequests[i] != null && outgoingRequests[i].Item1 == pieceIndex && outgoingRequests[i].Item2 == offset)
+                {
+                    outgoingRequests[i] = null;
+                    entryFound = true;
+                }
+            }
+            if (!entryFound)
+            {
+                throw new ArgumentException("Such entry could not be found");
+            }
+            else
+            {
+                outgoingRequestsCount--;
+            }
         }
     }
 }

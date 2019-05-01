@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 
 namespace CourseWork
 {
@@ -10,13 +11,15 @@ namespace CourseWork
         public byte[] pieceBuffer;
         public BitArray blocksMap;
         public BitArray requestedBlocksMap;
+        //public long connectionID;
 
-        public PieceInfoNode(int pieceIndex, byte[] buffer, BitArray blocksMap)
+        public PieceInfoNode(int pieceIndex, byte[] buffer, BitArray blocksMap/*, IntPtr connectionID*/)
         {
             this.pieceIndex = pieceIndex;
             this.pieceBuffer = buffer;
             this.blocksMap = blocksMap;
             this.requestedBlocksMap = new BitArray(blocksMap.Count);
+            //this.connectionID = connectionID.ToInt64();
             //this.lastBlockSize = 
         }
     }

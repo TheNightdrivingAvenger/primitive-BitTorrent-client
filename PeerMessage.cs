@@ -18,7 +18,7 @@ namespace CourseWork
         request, piece, cancel, port
     };
 
-    public class PeerMessage
+    public class PeerMessage : Message
     {
         private byte[] msgContents;
         public MessageType messageType { get; private set; }
@@ -62,8 +62,6 @@ namespace CourseWork
         // or peer is faulting. Other (subsequent) messages may be large, and connection
         // after handshake is believed to be stable, so if something happens we wait until
         // some TCP error or something else, which will lead to connection closing
-
-        // TODO: ✓ make awaiting for a response not infinite!
         public async Task<int> GetAndDecodeHandshake(byte[] expectedInfoHash, NetworkStream stream, int delay)
         {
             messageType = MessageType.invalid;

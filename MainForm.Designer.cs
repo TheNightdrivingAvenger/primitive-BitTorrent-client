@@ -37,7 +37,15 @@
             this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.OpenFileDia = new System.Windows.Forms.OpenFileDialog();
+            this.mainToolStrip = new System.Windows.Forms.ToolStrip();
+            this.StartButton = new System.Windows.Forms.ToolStripButton();
+            this.StopButton = new System.Windows.Forms.ToolStripButton();
+            this.RemoveButton = new System.Windows.Forms.ToolStripButton();
+            this.DeleteButton = new System.Windows.Forms.ToolStripButton();
+            this.createANewTorrentToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.menuStrip1.SuspendLayout();
+            this.mainToolStrip.SuspendLayout();
             this.SuspendLayout();
             // 
             // FilesArea
@@ -47,11 +55,11 @@
             this.FileSize,
             this.FileState,
             this.SeedersLeechersRatio});
-            this.FilesArea.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.FilesArea.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.FilesArea.FullRowSelect = true;
-            this.FilesArea.Location = new System.Drawing.Point(0, 28);
+            this.FilesArea.Location = new System.Drawing.Point(0, 53);
             this.FilesArea.Name = "FilesArea";
-            this.FilesArea.Size = new System.Drawing.Size(1083, 513);
+            this.FilesArea.Size = new System.Drawing.Size(1083, 488);
             this.FilesArea.TabIndex = 0;
             this.FilesArea.UseCompatibleStateImageBehavior = false;
             this.FilesArea.View = System.Windows.Forms.View.Details;
@@ -90,7 +98,8 @@
             // fileToolStripMenuItem
             // 
             this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.openToolStripMenuItem});
+            this.openToolStripMenuItem,
+            this.createANewTorrentToolStripMenuItem});
             this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
             this.fileToolStripMenuItem.Size = new System.Drawing.Size(53, 24);
             this.fileToolStripMenuItem.Text = "&File...";
@@ -105,13 +114,79 @@
             // OpenFileDia
             // 
             this.OpenFileDia.DefaultExt = "torrent";
+            this.OpenFileDia.Filter = "Torrent-files (*.torrent)|*.torrent|All files|*.*";
             this.OpenFileDia.ShowReadOnly = true;
+            // 
+            // mainToolStrip
+            // 
+            this.mainToolStrip.ImageScalingSize = new System.Drawing.Size(20, 20);
+            this.mainToolStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.StartButton,
+            this.StopButton,
+            this.toolStripSeparator1,
+            this.RemoveButton,
+            this.DeleteButton});
+            this.mainToolStrip.Location = new System.Drawing.Point(0, 28);
+            this.mainToolStrip.Name = "mainToolStrip";
+            this.mainToolStrip.Size = new System.Drawing.Size(1083, 27);
+            this.mainToolStrip.TabIndex = 2;
+            this.mainToolStrip.Text = "toolStrip1";
+            // 
+            // StartButton
+            // 
+            this.StartButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.StartButton.Image = global::CourseWork.Properties.Resources.play_arrow;
+            this.StartButton.ImageTransparentColor = System.Drawing.Color.Magenta;
+            this.StartButton.Name = "StartButton";
+            this.StartButton.Size = new System.Drawing.Size(24, 24);
+            this.StartButton.ToolTipText = "Start downloading";
+            // 
+            // StopButton
+            // 
+            this.StopButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.StopButton.Image = global::CourseWork.Properties.Resources.stop;
+            this.StopButton.ImageTransparentColor = System.Drawing.Color.Magenta;
+            this.StopButton.Name = "StopButton";
+            this.StopButton.Size = new System.Drawing.Size(24, 24);
+            this.StopButton.ToolTipText = "Stop downloading";
+            this.StopButton.Click += new System.EventHandler(this.StopButton_Click);
+            // 
+            // RemoveButton
+            // 
+            this.RemoveButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.RemoveButton.Image = global::CourseWork.Properties.Resources.cancel;
+            this.RemoveButton.ImageTransparentColor = System.Drawing.Color.Magenta;
+            this.RemoveButton.Name = "RemoveButton";
+            this.RemoveButton.Size = new System.Drawing.Size(24, 24);
+            this.RemoveButton.ToolTipText = "Remove from program, keep downloaded files";
+            // 
+            // DeleteButton
+            // 
+            this.DeleteButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.DeleteButton.Image = global::CourseWork.Properties.Resources.delete;
+            this.DeleteButton.ImageTransparentColor = System.Drawing.Color.Magenta;
+            this.DeleteButton.Name = "DeleteButton";
+            this.DeleteButton.Size = new System.Drawing.Size(24, 24);
+            this.DeleteButton.ToolTipText = "Delete downloaded files and remove from program";
+            // 
+            // createANewTorrentToolStripMenuItem
+            // 
+            this.createANewTorrentToolStripMenuItem.Name = "createANewTorrentToolStripMenuItem";
+            this.createANewTorrentToolStripMenuItem.Size = new System.Drawing.Size(228, 26);
+            this.createANewTorrentToolStripMenuItem.Text = "Create a new torrent...";
+            // 
+            // toolStripSeparator1
+            // 
+            this.toolStripSeparator1.ForeColor = System.Drawing.SystemColors.ActiveCaptionText;
+            this.toolStripSeparator1.Name = "toolStripSeparator1";
+            this.toolStripSeparator1.Size = new System.Drawing.Size(6, 27);
             // 
             // MainForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1083, 541);
+            this.Controls.Add(this.mainToolStrip);
             this.Controls.Add(this.FilesArea);
             this.Controls.Add(this.menuStrip1);
             this.MainMenuStrip = this.menuStrip1;
@@ -121,6 +196,8 @@
             this.Shown += new System.EventHandler(this.MainForm_Shown);
             this.menuStrip1.ResumeLayout(false);
             this.menuStrip1.PerformLayout();
+            this.mainToolStrip.ResumeLayout(false);
+            this.mainToolStrip.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -137,6 +214,13 @@
         private System.Windows.Forms.ToolStripMenuItem openToolStripMenuItem;
         private System.Windows.Forms.OpenFileDialog OpenFileDia;
         private System.Windows.Forms.ColumnHeader SeedersLeechersRatio;
+        private System.Windows.Forms.ToolStrip mainToolStrip;
+        private System.Windows.Forms.ToolStripButton StartButton;
+        private System.Windows.Forms.ToolStripButton StopButton;
+        private System.Windows.Forms.ToolStripButton RemoveButton;
+        private System.Windows.Forms.ToolStripButton DeleteButton;
+        private System.Windows.Forms.ToolStripMenuItem createANewTorrentToolStripMenuItem;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
     }
 }
 

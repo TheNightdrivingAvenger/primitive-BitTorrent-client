@@ -28,7 +28,8 @@ namespace CourseWork
         private const string CONNTOTRACKERMSG = "Connecting to tracker(-s)...";
         private const string INVALTRACKRESPMSG = "Tracker's response is invalid! Try again later";
         private const string NOPEERSMSG = "No peers found, try again later";
-        private const string CONNTOPEERSMSG = "Connecting to peers...";
+        private const string SEARCHINGPEERSMSG = "Searching peers...";
+        //private const string CONNTOPEERSMSG = "Connecting to peers...";
         private const string DOWNLOADINGMSG = "Downloading...";
         private const string STOPPEDMSG = "Stopped";
 
@@ -70,24 +71,25 @@ namespace CourseWork
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
-                                // == CANCEL IS TEMPORARY! OFC SHOULD BE !=
-            if (OpenFileDia.ShowDialog() == DialogResult.Cancel)
+            if (OpenFileDia.ShowDialog() != DialogResult.Cancel)
             {
-                //FileWorker.OpenFileAction(OpenFileDia.FileName);
-                //try
-                //{
-                var parser = new BencodeParser();
-                // exceptions: FileNotFound (System.IO, have a look!)
-                // BencodeNET.Exceptions.InvalidBencodeException
-                var torrent = parser.Parse<Torrent>("F:\\test.torrent");//F:\\Music\\(Alternative Rock Modern Rock) Poets Of The Fall - Ultraviolet - 2018, MP3 (tracks), 320 kbps [rutracker-5623339].torrent");
-                var InfoWindow = new TorrentInfo(this, torrent);
+                try
+                {
+                    var parser = new BencodeParser();
+                    var torrent = parser.Parse<Torrent>(OpenFileDia.FileName);
+                    var InfoWindow = new TorrentInfo(this, torrent);
 
-                InfoWindow.Show();
-
-                //} catch (Exception ex) // catch all the needed exceptions
-                //{
-                //    MessageBox.Show(ex.Message);
-                //}
+                    InfoWindow.Show();
+                }
+                catch (BencodeException)
+                {
+                    MessageBox.Show(this, "There was an error while trying to process the file;\r\nMake sure it is a valid Torrent-file",
+                        "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                catch (System.IO.IOException)
+                {
+                    MessageBox.Show("There was an error while trying to open the file;\r\nMake sure file exists and is available for reading");
+                }
             }
         }
 
@@ -100,23 +102,19 @@ namespace CourseWork
         {
             // add copying file to program's location (so we can keep track of opened torrents
             // AND be independent from original file)
-
-            var newSharedFile = new DownloadingFile(this, torrent,
-                "F:\\test.torrent", "F:\\TORRENTTEST");//"F:\\Music\\(Alternative Rock Modern Rock) Poets Of The Fall - Ultraviolet - 2018, MP3 (tracks), 320 kbps [rutracker-5623339]", "F:\\TORRENTTEST");
-
-            // idk if thread safety is needed. GUI windows are in the same thread, will anyone else use this list?..
-            lock (filesList)
-            {
-                filesList.AddLast(newSharedFile);
-            }            
+        
             // ВСЕ столбцы строки ListView индексируются (с 0)
             ListViewItem newFile = new ListViewItem(torrent.DisplayName);
             newFile.SubItems.Add(GetAppropriateSizeForm(torrent.TotalSize));
             newFile.SubItems.Add(CONNTOTRACKERMSG);
             newFile.SubItems.Add("0");
 
-            //newFile.SubItems.Add("");
-            //filesView.AddFirst(newFile);
+            var newSharedFile = new DownloadingFile(this, newFile, torrent,
+                "F:\\test.torrent", "F:\\TORRENTTEST");
+
+            // idk if thread safety is needed. GUI windows are in the same thread, will anyone else use this list?..
+            filesList.AddLast(newSharedFile);
+
             FilesArea.Items.Add(newFile);
             // бывают исключения при отправке запроса!.. WebException -- не получиолсь разрешить DNS
             try
@@ -134,7 +132,7 @@ namespace CourseWork
                 curMsg = NOPEERSMSG;
             } else
             {
-                curMsg = CONNTOPEERSMSG;
+                curMsg = SEARCHINGPEERSMSG;
             }
 
             if (InvokeRequired)
@@ -149,6 +147,46 @@ namespace CourseWork
             }
 
             await newSharedFile.ConnectToPeers().ConfigureAwait(false);
+        }
+
+        public void PeerConnectedDisconnectedEvent(DownloadingFile sharedFile, int totalPeers)
+        {
+            string curMsg;
+            if (totalPeers > 0)
+            {
+                curMsg = DOWNLOADINGMSG + " " + Math.Round(sharedFile.downloaded / (double)sharedFile.totalSize * 100, 2) + "%";
+            }
+            else
+            {
+                curMsg = SEARCHINGPEERSMSG;
+            }
+            if (InvokeRequired)
+            {
+                Invoke(new MethodInvoker(() => FilesArea.Items[FilesArea.Items.IndexOf(sharedFile.listViewEntry)].SubItems[2].Text =
+                    curMsg));
+            }
+            else
+            {
+                FilesArea.Items[FilesArea.Items.IndexOf(sharedFile.listViewEntry)].SubItems[2].Text =
+                    curMsg;
+            }
+        }
+
+        public void UpdateProgress(DownloadingFile sharedFile)
+        {
+            // if 100% then "completed"
+            string curMsg = DOWNLOADINGMSG + " " + Math.Round(sharedFile.downloaded / (double)sharedFile.totalSize * 100, 2) + "%";
+
+            if (InvokeRequired)
+            {
+                Invoke(new MethodInvoker(() => FilesArea.Items[FilesArea.Items.IndexOf(sharedFile.listViewEntry)].SubItems[2].Text =
+                    curMsg));
+            }
+            else
+            {
+                FilesArea.Items[FilesArea.Items.IndexOf(sharedFile.listViewEntry)].SubItems[2].Text =
+                    curMsg;
+            }
         }
 
         //torrent or newly added entry in filesList
@@ -291,6 +329,12 @@ namespace CourseWork
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             DownloadingFile.messageHandler.Stop();
+            // TODO: close downloading file (file stream(-s)) and all this stuff
+        }
+
+        private void StopButton_Click(object sender, EventArgs e)
+        {
+            // find out what file has been selected, then call Stop method
         }
     }
 }
