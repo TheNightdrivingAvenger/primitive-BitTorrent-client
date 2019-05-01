@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CourseWork
 {
-    public class Message
+    public abstract class Message
     {
         public DownloadingFile targetFile;
         public PeerConnection targetConnection;

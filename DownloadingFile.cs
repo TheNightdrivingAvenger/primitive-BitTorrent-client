@@ -14,6 +14,7 @@ namespace CourseWork
     public enum DownloadState { queued, downloading, stopped };
 
     // TODO: need a timer for tracker reconnections, choking-unchoking
+    // TODO: finally get all the needed stuff locked!!!
     public class DownloadingFile
     {
         /* Information about shared files */
@@ -152,7 +153,9 @@ namespace CourseWork
             }
             else
             {
-                messageHandler.AddTask(new Tuple<DownloadingFile, PeerMessage, PeerConnection>(this, msg, connection));
+                msg.targetConnection = connection;
+                msg.targetFile = this;
+                messageHandler.AddTask(msg);
             }
         }
 
@@ -160,6 +163,29 @@ namespace CourseWork
         {
             // removing all pending requests from both pendingPieces list and connections
             // if needed, send "cancel" to peer
+            state = DownloadState.stopped;
+            foreach (var peer in connectedPeers)
+            {
+                for (int i = 0; i < peer.outgoingRequests.Length; i++)
+                {
+                    if (peer.outgoingRequests[i] != null)
+                    {
+                        // no null-checking because it can't be null
+                        PieceInfoNode node;
+                        node = FindRequestsPiece(peer.outgoingRequests[i].Item1);
+                        node.requestedBlocksMap[peer.outgoingRequests[i].Item2 / blockSize] = false;
+
+                        var msg = new CommandMessage(ControlMessageType.SendCancel, node.pieceIndex,
+                            peer.outgoingRequests[i].Item2 / blockSize);
+                        msg.targetConnection = peer;
+                        msg.targetFile = this;
+
+                        messageHandler.AddTask(msg);
+
+                        peer.outgoingRequests[i] = null;
+                    }
+                }
+            }
         }
 
         public void ProgramClosing()

@@ -86,7 +86,7 @@ namespace CourseWork
             var message = await RecieveHandshakeMessage().ConfigureAwait(false);
 
             //add checking if hash in the response is valid
-            if (message == null || message.messageType != MessageType.handshake)
+            if (message == null || message.messageType != PeerMessageType.handshake)
             {
                 return -1;
             }
@@ -95,28 +95,68 @@ namespace CourseWork
 
         private async Task<PeerMessage> RecieveHandshakeMessage()
         {
-            var msg = new PeerMessage();
+            byte[] buf = new byte[PeerMessage.pstrLenSpace + PeerMessage.pstr.Length + PeerMessage.reservedLen + 20 + 20];
             // 5000 -- cancel receiving handshake if peer hasn't responded in 5 seconds
-            int result = await msg.GetAndDecodeHandshake(infoHash, connectionClient.GetStream(), 5000);
+            int result = await GetAndDecodeHandshake(buf, 5000);
             if (result != 0)
             {
                 return null;
             }
-            return msg;
+
+            return new PeerMessage(buf, infoHash);
+        }
+
+        // Making only handshake time limited because it's the first and crucial message;
+        // if it's delayed then there're probably some problems with connection to peer
+        // or peer is faulting. Other (subsequent) messages may be large, and connection
+        // after handshake is believed to be stable, so if something happens we wait until
+        // some TCP error or something else, which will lead to connection closing
+        public async Task<int> GetAndDecodeHandshake(byte[] buf, int delay)
+        {
+            int readres = 0;
+            int read = 0;
+            int bufOffset = 0;
+
+            while (read < buf.Length)
+            {
+                var handshakeCancellationTokenSource = new CancellationTokenSource();
+                try
+                {
+                    handshakeCancellationTokenSource.CancelAfter(delay);
+                    readres = await connectionClient.GetStream().ReadAsync(buf, bufOffset,
+                        buf.Length - read, handshakeCancellationTokenSource.Token);
+
+                    if (readres == 0)
+                    {
+                        return 1;
+                    }
+                    read += readres;
+                    bufOffset = read;
+                }
+                catch // I don't care what exception occured (network error or time-out), it's all failure
+                {
+                    return 1;
+                }
+                finally
+                {
+                    handshakeCancellationTokenSource.Dispose();
+                }
+            }
+            return 0;
         }
 
         private async Task<PeerMessage> RecievePeerMessage()
         {
             int left = PeerMessage.msgLenSpace;
             int bufOffset = 0;
-
-            var msg = new PeerMessage();
+            byte[] buf = new byte[4];
             // exceptions!
             // getting the first 4 bytes of the message that'll tell us how many more to expect
             while (left != 0)
             {
-                int readres = await connectionClient.GetStream().ReadAsync(msg.GetMsgContents(), bufOffset, left);
+                int readres = 0;
 
+                readres = await connectionClient.GetStream().ReadAsync(buf, bufOffset, left);
                 if (readres == 0)
                 {
                     return null;
@@ -127,23 +167,46 @@ namespace CourseWork
                     bufOffset += readres;
                 }
             }
-
-            // count of peersPieces won't change, so no synchronization is needed. If it causes any problems,
-            // I can just save the initial size and use it
-            int result = await msg.GetAndDecode(connectionClient.GetStream(), peersPieces.Count);
-            if (result == 1 || result == 2)
+            buf = await GetAndDecode(buf);
+            if (buf == null)
             {
                 return null;
             }
-            else if (result == 0)
+            // count of peersPieces won't change, so no synchronization is needed. If it causes any problems,
+            // I can just save the initial size and use it
+            return new PeerMessage(buf, peersPieces.Count);
+        }
+
+        /// <summary>
+        /// Recieves and decodes a message after its length has been determined.
+        /// </summary>
+        /// <param name="buf">Buffer to receive message to</param>
+        /// <returns>Status code: 1 on any error, 0 on success</returns>
+        public async Task<byte[]> GetAndDecode(byte[] buf)
+        {
+            // no copy because msgContents is only 4 bytes long at this point and contains only BE message length
+            int msgLen = BitConverter.ToInt32(HTONNTOH(buf), 0);
+            // also can do something if the length is way too big
+            if (msgLen == 0)
             {
-                return msg;
+                return new byte[4];
             }
-            else
-            { // don't do anything on -1: we got an invalid/unrecognizible message, so just skip it (calling code must check messagetype!)
-                wrongCount++;
-                return msg;
+
+            byte[] result = new byte[PeerMessage.msgLenSpace + msgLen];
+            int readres = 0;
+            int read = 0;
+            int bufOffset = PeerMessage.msgLenSpace;
+            while (read < msgLen)
+            {
+                readres = await connectionClient.GetStream().ReadAsync(result, bufOffset, msgLen - read);
+                if (readres == 0)
+                {
+                    return null;
+                }
+                read += readres;
+                bufOffset += readres;
             }
+            return result;
         }
 
         public async void StartPeerMessageLoop()
@@ -151,7 +214,7 @@ namespace CourseWork
             // while (!cancelled) HERE!
             while (true)
             {
-                PeerMessage msg = null;
+                PeerMessage msg;
                 try
                 {
                     msg = await RecievePeerMessage();
@@ -159,10 +222,11 @@ namespace CourseWork
                 catch
                 {
                     // if something went wrong, dispatch "null" instead of a message. Connection will be closed
+                    msg = null;
                 }
                 if (msg != null)
                 {
-                    if (msg.messageType == MessageType.invalid)
+                    if (msg.messageType == PeerMessageType.unknown)
                     {
                         if (wrongCount <= MAXWRONGMESSAGES)
                         {
@@ -171,8 +235,11 @@ namespace CourseWork
                         else
                         {
                             msg = null;
-                            MsgRecieved(msg, this);
                         }
+                    }
+                    if (msg.messageType == PeerMessageType.invalid)
+                    {
+                        msg = null;
                     }
                 }
                 MsgRecieved(msg, this);
@@ -317,6 +384,20 @@ namespace CourseWork
             {
                 outgoingRequestsCount--;
             }
+        }
+
+        /// <summary>
+        /// Performs host to network and vise-versa conversion of signed 32-bit integer
+        /// </summary>
+        /// <param name="bytes">Number to convert (as 4 bytes array)</param>
+        /// <returns>Array with needed byte order (use BitConverter to get the number)</returns>
+        public static byte[] HTONNTOH(byte[] bytes)
+        {
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(bytes);
+            }
+            return bytes;
         }
     }
 }

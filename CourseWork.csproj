@@ -49,8 +49,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CommandMessage.cs" />
     <Compile Include="DownloadingFile.cs" />
     <Compile Include="InvalidTrackerResponseException.cs" />
+    <Compile Include="Message.cs" />
     <Compile Include="MessageHandler.cs" />
     <Compile Include="PeerConnection.cs" />
     <Compile Include="FileWorker.cs" />
@@ -103,6 +105,15 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="icons\play-arrow.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="icons\stop.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="icons\cancel.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="icons\delete.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
