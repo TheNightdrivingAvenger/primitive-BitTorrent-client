@@ -203,7 +203,6 @@ namespace CourseWork
                 return;
             }
 
-            // TODO: move checking to MessageHandler probably
             if (msgContents[msgLenSpace] == 5)
             {
                 int bitsCount = (msgContents.Length - msgLenSpace - msgTypeSpace) * 8;
@@ -213,11 +212,7 @@ namespace CourseWork
                     messageType = PeerMessageType.invalid;
                 }
 
-                if (bitsCount == expectedBitfieldLength)
-                {
-                    // OK
-                }
-                else
+                if (bitsCount != expectedBitfieldLength)
                 {
                     byte lastByte = msgContents[msgContents.Length - 1];
                     lastByte <<= bitsCount - expectedBitfieldLength;

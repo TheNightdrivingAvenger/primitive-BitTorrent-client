@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -16,6 +17,8 @@ namespace CourseWork
     public partial class TorrentInfo : Form
     {
         private Torrent pendingTorrent;
+        private string chosenPath;
+        //public bool createSubFolder { get; private set; }
 
         public TorrentInfo(Form owner, Torrent torrent)
         {
@@ -25,7 +28,7 @@ namespace CourseWork
             this.pendingTorrent = torrent;
 
             NameLblContents.Text = torrent.DisplayName;
-            SizeLblContents.Text = torrent.TotalSize.ToString();
+            SizeLblContents.Text = MainForm.GetAppropriateSizeForm(torrent.TotalSize);
             DescriptionLblContents.Text = torrent.Comment;
 
             if (torrent.CreationDate.HasValue)
@@ -43,7 +46,7 @@ namespace CourseWork
         {
             //FileWorker.AddNewTorrentAsync();
             // add it to GUI, then wait
-            ((MainForm)Owner).TorrentSubmitted(pendingTorrent);
+            ((MainForm)Owner).TorrentSubmitted(pendingTorrent, chosenPath);
             this.Close();
         }
 
@@ -51,6 +54,26 @@ namespace CourseWork
         {
             pendingTorrent = null;
             this.Close();
+        }
+
+        private void TorrentInfo_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        private void BrowseFolderButton_Click(object sender, EventArgs e)
+        {
+            if (DownloadPathDialog.ShowDialog() == DialogResult.OK)
+            {
+                string tail = "";
+                if (CreateSubFolder.Checked)
+                {
+                    tail = pendingTorrent.DisplayName;
+                }
+                chosenPath = DownloadPathDialog.SelectedPath + Path.DirectorySeparatorChar + FileWorker.ClearPath(tail);
+                DownloadPath.Text = chosenPath;
+                AddTorrentOK.Enabled = true;
+            }
         }
     }
 }

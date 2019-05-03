@@ -73,10 +73,41 @@ namespace CourseWork
                 switch (message.messageType)
                 {
                     case ControlMessageType.SendKeepAlive:
-                        // send keep-alive here
+                        try
+                        {
+                            message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.keepAlive));
+                        }
+                        catch
+                        {
+                            message.targetConnection.CloseConnection();
+                            message.targetFile.RemoveConnection(message.targetConnection);
+                        }
                         break;
                     case ControlMessageType.SendCancel:
-                        // send cancel here
+                        try
+                        {
+                            message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.cancel, message.pieceIndex,
+                                message.pieceOffset, message.blockSize));
+                        }
+                        catch
+                        {
+                            message.targetConnection.CloseConnection();
+                            message.targetFile.RemoveConnection(message.targetConnection);
+                        }
+                        break;
+                    case ControlMessageType.CloseConnection:
+                        // TODO: what if here I try to close an already closed connection?
+                        // for example somewhere in the queue there's a message "Close connection",
+                        // but it fails to send something and is closed earlier
+                        try
+                        {
+                            message.targetConnection.CloseConnection();
+                            message.targetFile.RemoveConnection(message.targetConnection);
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            // do nothing; it has been closed somewhere else
+                        }
                         break;
                 }
             }
@@ -105,8 +136,16 @@ namespace CourseWork
                         message.targetConnection.SetPeerNotInterested();
                         if (!message.targetConnection.connectionState.HasFlag(CONNSTATES.AM_CHOKING))
                         {
-                            message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.choke));
-                            message.targetConnection.SetAmChoking();
+                            try
+                            {
+                                message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.choke));
+                                message.targetConnection.SetAmChoking();
+                            }
+                            catch
+                            {
+                                message.targetConnection.CloseConnection();
+                                message.targetFile.RemoveConnection(message.targetConnection);
+                            }
                         }
                         break;
                     case PeerMessageType.have:
@@ -129,17 +168,17 @@ namespace CourseWork
                             // if this method would do this, because it controls all other behavior of connection
                             message.targetFile.AddBlock(message.pieceIndex, message.pieceOffset, block);
                         }
-                        //try
-                        //{
+                        try
+                        {
                             message.targetConnection.RemoveOutgoingRequest(message.pieceIndex, message.pieceOffset);
-                        //}
-                        //catch (ArgumentException)
-                        //{
+                        }
+                        catch (ArgumentException)
+                        {
                             // do nothing, because we (most likely) received a piece we cancelled sometime earlier
-                        //}
+                        }
                         break;
                     case PeerMessageType.cancel:
-                        // TODO: remove from pending incoming requests (whatever this means now)
+                        // TODO: remove from pending incoming requests (whatever this means now); probly no need to call ConnectionStateChanged
                         break;
                     case PeerMessageType.port:
                         return;
@@ -158,16 +197,32 @@ namespace CourseWork
                 {
                     if (!interestingPieces)
                     {
-                        message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.notInterested));
-                        message.targetConnection.SetAmNotInterested();
+                        try
+                        {
+                            message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.notInterested));
+                            message.targetConnection.SetAmNotInterested();
+                        }
+                        catch
+                        {
+                            message.targetConnection.CloseConnection();
+                            message.targetFile.RemoveConnection(message.targetConnection);
+                        }
                     }
                 }
                 else
                 {
                     if (interestingPieces)
                     {
-                        message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.interested));
-                        message.targetConnection.SetAmInterested();
+                        try
+                        {
+                            message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.interested));
+                            message.targetConnection.SetAmInterested();
+                        }
+                        catch
+                        {
+                            message.targetConnection.CloseConnection();
+                            message.targetFile.RemoveConnection(message.targetConnection);
+                        }
                     }
                 }
             }
@@ -175,8 +230,16 @@ namespace CourseWork
             {
                 if (!interestingPieces && message.targetConnection.outgoingRequestsCount == 0)
                 {
-                    message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.notInterested));
-                    message.targetConnection.SetAmNotInterested();
+                    try
+                    {
+                        message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.notInterested));
+                        message.targetConnection.SetAmNotInterested();
+                    }
+                    catch
+                    {
+                        message.targetConnection.CloseConnection();
+                        message.targetFile.RemoveConnection(message.targetConnection);
+                    }
                 }
                 else if (interestingPieces && 
                     message.targetConnection.outgoingRequestsCount < message.targetConnection.maxPendingOutgoingRequestsCount)
@@ -188,14 +251,21 @@ namespace CourseWork
                     while (nextRequest != null &&
                         message.targetConnection.outgoingRequestsCount <= message.targetConnection.maxPendingOutgoingRequestsCount)
                     {
-                        message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.request, nextRequest.Item1,
-                            nextRequest.Item2, nextRequest.Item3));
-                        //tuple.Item3.AddOutgoingRequest(nextRequest.Item1, nextRequest.Item2);
+                        try
+                        {
+                            message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.request, nextRequest.Item1,
+                                nextRequest.Item2, nextRequest.Item3));
+                        }
+                        catch
+                        {
+                            message.targetConnection.CloseConnection();
+                            message.targetFile.RemoveConnection(message.targetConnection);
+                            break;
+                        }
 
                         if (message.targetConnection.outgoingRequestsCount < message.targetConnection.maxPendingOutgoingRequestsCount)
                         {
                             nextRequest = message.targetFile.FindNextRequest(message.targetConnection);
-                            //tuple.Item3.AddOutgoingRequest(nextRequest.Item1, nextRequest.Item2);
                         }
                         else
                         {
@@ -204,34 +274,6 @@ namespace CourseWork
                     }
                 }
             }
-
-
-            /*Tuple<int, int, int> nextRequest = tuple.Item1.FindNextRequest(tuple.Item3);
-        
-            if (nextRequest != null)
-            {
-                // if Peer is choking me, need to tell him I'm interested
-                if (tuple.Item3.connectionState.HasFlag(CONNSTATES.PEER_CHOKING))
-                {
-                    if (!tuple.Item3.connectionState.HasFlag(CONNSTATES.AM_INTERESTED))
-                    {
-                        // send AM_INTERESTED message
-                        tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.interested));
-                        tuple.Item3.SetAmInterested();
-                    }
-                }
-                else
-                {
-                    tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.request, nextRequest.Item1,
-                        nextRequest.Item2, nextRequest.Item3));
-                }
-            } // TODO: send "not interested" ONLY when peer has no interesting pieces AND I've really requested blocks
-            // and got all that I requested
-            else if (tuple.Item3.connectionState.HasFlag(CONNSTATES.AM_INTERESTED))
-            {
-                tuple.Item3.SendPeerMessage(new PeerMessage(MessageType.notInterested));
-                tuple.Item3.SetAmNotInterested();
-            }*/
         }
 
         // System.InvalidOperationException: 'Коллекция была помечена, как завершенная, с учетом добавлений.'

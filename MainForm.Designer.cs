@@ -36,14 +36,14 @@
             this.menuStrip1 = new System.Windows.Forms.MenuStrip();
             this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.createANewTorrentToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.OpenFileDia = new System.Windows.Forms.OpenFileDialog();
             this.mainToolStrip = new System.Windows.Forms.ToolStrip();
             this.StartButton = new System.Windows.Forms.ToolStripButton();
             this.StopButton = new System.Windows.Forms.ToolStripButton();
+            this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.RemoveButton = new System.Windows.Forms.ToolStripButton();
             this.DeleteButton = new System.Windows.Forms.ToolStripButton();
-            this.createANewTorrentToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.menuStrip1.SuspendLayout();
             this.mainToolStrip.SuspendLayout();
             this.SuspendLayout();
@@ -58,6 +58,7 @@
             this.FilesArea.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.FilesArea.FullRowSelect = true;
             this.FilesArea.Location = new System.Drawing.Point(0, 53);
+            this.FilesArea.MultiSelect = false;
             this.FilesArea.Name = "FilesArea";
             this.FilesArea.Size = new System.Drawing.Size(1083, 488);
             this.FilesArea.TabIndex = 0;
@@ -107,9 +108,15 @@
             // openToolStripMenuItem
             // 
             this.openToolStripMenuItem.Name = "openToolStripMenuItem";
-            this.openToolStripMenuItem.Size = new System.Drawing.Size(129, 26);
+            this.openToolStripMenuItem.Size = new System.Drawing.Size(228, 26);
             this.openToolStripMenuItem.Text = "&Open...";
             this.openToolStripMenuItem.Click += new System.EventHandler(this.openToolStripMenuItem_Click);
+            // 
+            // createANewTorrentToolStripMenuItem
+            // 
+            this.createANewTorrentToolStripMenuItem.Name = "createANewTorrentToolStripMenuItem";
+            this.createANewTorrentToolStripMenuItem.Size = new System.Drawing.Size(228, 26);
+            this.createANewTorrentToolStripMenuItem.Text = "Create a new torrent...";
             // 
             // OpenFileDia
             // 
@@ -151,6 +158,12 @@
             this.StopButton.ToolTipText = "Stop downloading";
             this.StopButton.Click += new System.EventHandler(this.StopButton_Click);
             // 
+            // toolStripSeparator1
+            // 
+            this.toolStripSeparator1.ForeColor = System.Drawing.SystemColors.ActiveCaptionText;
+            this.toolStripSeparator1.Name = "toolStripSeparator1";
+            this.toolStripSeparator1.Size = new System.Drawing.Size(6, 27);
+            // 
             // RemoveButton
             // 
             this.RemoveButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
@@ -168,18 +181,6 @@
             this.DeleteButton.Name = "DeleteButton";
             this.DeleteButton.Size = new System.Drawing.Size(24, 24);
             this.DeleteButton.ToolTipText = "Delete downloaded files and remove from program";
-            // 
-            // createANewTorrentToolStripMenuItem
-            // 
-            this.createANewTorrentToolStripMenuItem.Name = "createANewTorrentToolStripMenuItem";
-            this.createANewTorrentToolStripMenuItem.Size = new System.Drawing.Size(228, 26);
-            this.createANewTorrentToolStripMenuItem.Text = "Create a new torrent...";
-            // 
-            // toolStripSeparator1
-            // 
-            this.toolStripSeparator1.ForeColor = System.Drawing.SystemColors.ActiveCaptionText;
-            this.toolStripSeparator1.Name = "toolStripSeparator1";
-            this.toolStripSeparator1.Size = new System.Drawing.Size(6, 27);
             // 
             // MainForm
             // 

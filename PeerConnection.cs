@@ -75,15 +75,19 @@ namespace CourseWork
 
 
         // !MAKE HANDSHAKING ALGORITHM BETTER!
-        public async Task<int> PeerHandshake(byte[] infoHash, string peerID)
+        public async Task<int> PeerHandshakeAsync(byte[] infoHash, string peerID, CancellationTokenSource cancellationToken)
         {
             // exceptions (SocketException is caught by the caller)
             await connectionClient.ConnectAsync(endPoint.Address, endPoint.Port).ConfigureAwait(false);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return -1;
+            }
             var handshakeMessage = new PeerMessage(infoHash, peerID);
             await connectionClient.GetStream().WriteAsync(handshakeMessage.GetMsgContents(), 0, 
                 handshakeMessage.GetMsgContents().Length).ConfigureAwait(false);
 
-            var message = await RecieveHandshakeMessage().ConfigureAwait(false);
+            var message = await RecieveHandshakeMessageAsync().ConfigureAwait(false);
 
             //add checking if hash in the response is valid
             if (message == null || message.messageType != PeerMessageType.handshake)
@@ -93,11 +97,11 @@ namespace CourseWork
             return 0;
         }
 
-        private async Task<PeerMessage> RecieveHandshakeMessage()
+        private async Task<PeerMessage> RecieveHandshakeMessageAsync()
         {
             byte[] buf = new byte[PeerMessage.pstrLenSpace + PeerMessage.pstr.Length + PeerMessage.reservedLen + 20 + 20];
             // 5000 -- cancel receiving handshake if peer hasn't responded in 5 seconds
-            int result = await GetAndDecodeHandshake(buf, 5000);
+            int result = await GetAndDecodeHandshakeAsync(buf, 5000);
             if (result != 0)
             {
                 return null;
@@ -111,7 +115,7 @@ namespace CourseWork
         // or peer is faulting. Other (subsequent) messages may be large, and connection
         // after handshake is believed to be stable, so if something happens we wait until
         // some TCP error or something else, which will lead to connection closing
-        public async Task<int> GetAndDecodeHandshake(byte[] buf, int delay)
+        public async Task<int> GetAndDecodeHandshakeAsync(byte[] buf, int delay)
         {
             int readres = 0;
             int read = 0;
@@ -145,7 +149,7 @@ namespace CourseWork
             return 0;
         }
 
-        private async Task<PeerMessage> RecievePeerMessage()
+        private async Task<PeerMessage> RecievePeerMessageAsync()
         {
             int left = PeerMessage.msgLenSpace;
             int bufOffset = 0;
@@ -167,7 +171,7 @@ namespace CourseWork
                     bufOffset += readres;
                 }
             }
-            buf = await GetAndDecode(buf);
+            buf = await GetAndDecodeAsync(buf);
             if (buf == null)
             {
                 return null;
@@ -182,7 +186,7 @@ namespace CourseWork
         /// </summary>
         /// <param name="buf">Buffer to receive message to</param>
         /// <returns>Status code: 1 on any error, 0 on success</returns>
-        public async Task<byte[]> GetAndDecode(byte[] buf)
+        public async Task<byte[]> GetAndDecodeAsync(byte[] buf)
         {
             // no copy because msgContents is only 4 bytes long at this point and contains only BE message length
             int msgLen = BitConverter.ToInt32(HTONNTOH(buf), 0);
@@ -217,7 +221,7 @@ namespace CourseWork
                 PeerMessage msg;
                 try
                 {
-                    msg = await RecievePeerMessage();
+                    msg = await RecievePeerMessageAsync();
                 }
                 catch
                 {
@@ -297,7 +301,7 @@ namespace CourseWork
                     {
                         break;
                     }
-                    peersPieces.Set((i - message.rawBytesOffset) * 8 + (7 - bit), (curByte & mask) == 1);
+                    peersPieces.Set((i - message.rawBytesOffset) * 8 + (7 - bit), (curByte & mask) != 0);
                     mask >>= 1;
                 }
             }

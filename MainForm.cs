@@ -25,13 +25,15 @@ namespace CourseWork
      */
     public partial class MainForm : Form
     {
-        private const string CONNTOTRACKERMSG = "Connecting to tracker(-s)...";
-        private const string INVALTRACKRESPMSG = "Tracker's response is invalid! Try again later";
-        private const string NOPEERSMSG = "No peers found, try again later";
-        private const string SEARCHINGPEERSMSG = "Searching peers...";
+        public const string CONNTOTRACKERMSG = "Connecting to tracker(-s)...";
+        public const string NOTRACKER = "There was an error while trying to connect to the tracker.\r\n" +
+                    "It could happen if you're not connected to the Internet, there was an internal tracker error, or this tracker doesn't exist anymore";
+        public const string INVALTRACKRESPMSG = "Tracker's response is invalid! Try again later";
+        public const string NOPEERSMSG = "No peers found, try again later";
+        public const string SEARCHINGPEERSMSG = "Searching peers...";
         //private const string CONNTOPEERSMSG = "Connecting to peers...";
-        private const string DOWNLOADINGMSG = "Downloading...";
-        private const string STOPPEDMSG = "Stopped";
+        public const string DOWNLOADINGMSG = "Downloading...";
+        public const string STOPPEDMSG = "Stopped";
 
         private LinkedList<DownloadingFile> filesList;
         public string myPeerID { get; private set; }
@@ -71,7 +73,7 @@ namespace CourseWork
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (OpenFileDia.ShowDialog() != DialogResult.Cancel)
+            if (OpenFileDia.ShowDialog() == DialogResult.OK)
             {
                 try
                 {
@@ -88,17 +90,18 @@ namespace CourseWork
                 }
                 catch (System.IO.IOException)
                 {
-                    MessageBox.Show("There was an error while trying to open the file;\r\nMake sure file exists and is available for reading");
+                    MessageBox.Show("There was an error while trying to open the file;\r\nMake sure file exists and is available for reading",
+                        "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
         }
 
-        public async void TorrentSubmitted(Torrent torrent)
+        public async void TorrentSubmitted(Torrent torrent, string chosenPath)
         {
-            await AddNewTorrentAsync(torrent);
+            await AddNewTorrentAsync(torrent, chosenPath);
         }
 
-        private async Task AddNewTorrentAsync(Torrent torrent)
+        private async Task AddNewTorrentAsync(Torrent torrent, string chosenPath)
         {
             // add copying file to program's location (so we can keep track of opened torrents
             // AND be independent from original file)
@@ -106,47 +109,22 @@ namespace CourseWork
             // ВСЕ столбцы строки ListView индексируются (с 0)
             ListViewItem newFile = new ListViewItem(torrent.DisplayName);
             newFile.SubItems.Add(GetAppropriateSizeForm(torrent.TotalSize));
-            newFile.SubItems.Add(CONNTOTRACKERMSG);
-            newFile.SubItems.Add("0");
+            newFile.SubItems.Add(STOPPEDMSG);
+            newFile.SubItems.Add("");
+            FilesArea.Items.Add(newFile);
 
-            var newSharedFile = new DownloadingFile(this, newFile, torrent,
-                "F:\\test.torrent", "F:\\TORRENTTEST");
+            var newSharedFile = new DownloadingFile(this, FilesArea.Items.IndexOf(newFile), torrent, chosenPath);
 
             // idk if thread safety is needed. GUI windows are in the same thread, will anyone else use this list?..
             filesList.AddLast(newSharedFile);
 
-            FilesArea.Items.Add(newFile);
-            // бывают исключения при отправке запроса!.. WebException -- не получиолсь разрешить DNS
-            try
-            {
-                await EstablishTrackerConnectionAsync(torrent, newSharedFile, newFile).ConfigureAwait(false);
-            } catch (InvalidBencodeException<BObject> exc)
-            {
-                MessageBox.Show(INVALTRACKRESPMSG + exc.Message);
-                return;
-            }
+            // checkbox "Start downloading?" when adding
+            await StartDownloading(newSharedFile).ConfigureAwait(false);
+        }
 
-            string curMsg;
-            if (newSharedFile.peersAddr.Count == 0)
-            {
-                curMsg = NOPEERSMSG;
-            } else
-            {
-                curMsg = SEARCHINGPEERSMSG;
-            }
-
-            if (InvokeRequired)
-            {
-                Invoke(new MethodInvoker(() => FilesArea.Items[FilesArea.Items.IndexOf(newFile)].SubItems[2].Text =
-                    curMsg));
-            }
-            else
-            {
-                FilesArea.Items[FilesArea.Items.IndexOf(newFile)].SubItems[2].Text =
-                    curMsg;
-            }
-
-            await newSharedFile.ConnectToPeers().ConfigureAwait(false);
+        private async Task StartDownloading(DownloadingFile sharedFile)
+        {
+            await sharedFile.StartAsync();
         }
 
         public void PeerConnectedDisconnectedEvent(DownloadingFile sharedFile, int totalPeers)
@@ -156,142 +134,65 @@ namespace CourseWork
             {
                 curMsg = DOWNLOADINGMSG + " " + Math.Round(sharedFile.downloaded / (double)sharedFile.totalSize * 100, 2) + "%";
             }
+            else if (totalPeers == 0 && sharedFile.state != DownloadState.stopped)
+            {
+                curMsg = SEARCHINGPEERSMSG + "; downloaded " + Math.Round(sharedFile.downloaded / (double)sharedFile.totalSize * 100, 2) + "%";
+            }
             else
             {
-                curMsg = SEARCHINGPEERSMSG;
+                curMsg = "Stopped; downloaded " + Math.Round(sharedFile.downloaded / (double)sharedFile.totalSize * 100, 2) + "%";
             }
             if (InvokeRequired)
             {
-                Invoke(new MethodInvoker(() => FilesArea.Items[FilesArea.Items.IndexOf(sharedFile.listViewEntry)].SubItems[2].Text =
+                Invoke(new MethodInvoker(() => FilesArea.Items[sharedFile.listViewEntryID].SubItems[2].Text =
                     curMsg));
             }
             else
             {
-                FilesArea.Items[FilesArea.Items.IndexOf(sharedFile.listViewEntry)].SubItems[2].Text =
-                    curMsg;
+                FilesArea.Items[sharedFile.listViewEntryID].SubItems[2].Text = curMsg;
             }
         }
 
         public void UpdateProgress(DownloadingFile sharedFile)
         {
-            // if 100% then "completed"
             string curMsg = DOWNLOADINGMSG + " " + Math.Round(sharedFile.downloaded / (double)sharedFile.totalSize * 100, 2) + "%";
 
             if (InvokeRequired)
             {
-                Invoke(new MethodInvoker(() => FilesArea.Items[FilesArea.Items.IndexOf(sharedFile.listViewEntry)].SubItems[2].Text =
+                Invoke(new MethodInvoker(() => FilesArea.Items[sharedFile.listViewEntryID].SubItems[2].Text =
                     curMsg));
             }
             else
             {
-                FilesArea.Items[FilesArea.Items.IndexOf(sharedFile.listViewEntry)].SubItems[2].Text =
-                    curMsg;
+                FilesArea.Items[sharedFile.listViewEntryID].SubItems[2].Text = curMsg;
             }
         }
 
-        //torrent or newly added entry in filesList
-        private async Task EstablishTrackerConnectionAsync(Torrent torrent, DownloadingFile sharedFile, ListViewItem listViewEntry)
+        public void UpdateStatus(DownloadingFile sharedFile, string message)
         {
-            // watch out for HTTPRequestException!, and WebException!
-            var trackerResponse = new TrackerResponse();
-            await trackerResponse.GetTrackerResponse(torrent, sharedFile, myPeerID, 25000).ConfigureAwait(false);
-
-            var parser = new BencodeParser();
-
-            foreach (var item in trackerResponse.response)
+            if (InvokeRequired)
             {
-                // try-catch here for right types!
-                // WATCH OUT FOR CONFIGUREAWAIT AND THREAD SAFETY! NEED TO CONSIDER IT CAREFULLY
-                switch (item.Key.ToString())
-                {
-                    case "failure reason":
-                        // something went wrong; other keys may not be present
-                        if (InvokeRequired)
-                        {
-                            Invoke(new MethodInvoker(() => FilesArea.Items[FilesArea.Items.IndexOf(listViewEntry)].GetSubItemAt(0, 0).Text =
-                                INVALTRACKRESPMSG));
-                        } else
-                        {
-                            FilesArea.Items[FilesArea.Items.IndexOf(listViewEntry)].GetSubItemAt(0, 0).Text =
-                                INVALTRACKRESPMSG;
-                        }
-                        break;
-                    case "interval":
-                        sharedFile.trackerInterval = parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
-                        break;
-                    case "min interval":
-                        sharedFile.trackerMinInterval = parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
-                        break;
-                    case "tracker id":
-                        sharedFile.trackerID = parser.Parse<BString>(item.Value.EncodeAsBytes()).ToString();
-                        break;
-                    case "complete":
-                        if (InvokeRequired)
-                        {
-                            Invoke(new MethodInvoker(() => FilesArea.Items[FilesArea.Items.IndexOf(listViewEntry)].SubItems[3].Text +=
-                                parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value));
-                        } else
-                        {
-                            FilesArea.Items[FilesArea.Items.IndexOf(listViewEntry)].SubItems[3].Text +=
-                                parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
-                        }
-                        // number of seeders (peers with completed file). Only for UI purposes I guess...
-                        break;
-                    case "incomplete":
-                        if (InvokeRequired)
-                        {
-                            Invoke(new MethodInvoker(() => FilesArea.Items[FilesArea.Items.IndexOf(listViewEntry)].SubItems[3].Text +=
-                                "/" + parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value));
-                        } else
-                        {
-                            FilesArea.Items[FilesArea.Items.IndexOf(listViewEntry)].SubItems[3].Text +=
-                                "/" + parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
-                        }
-                        // number of leechers; purpose is the same
-                        break;
-                    case "peers":
-                        // sometimes peers can be presented in binary model!
-                        var peers = parser.Parse(item.Value.EncodeAsBytes());
-                        if (peers is BString)
-                        {
-                            // ToArray seems to be a bit heavy...
-                            byte[] binaryPeersList;
-                            binaryPeersList = ((BString)peers).Value.ToArray();
-                            if (binaryPeersList.Length % 6 != 0)
-                            {
-                                // not actually an invalid bencoding, but for simplicity
-                                throw new InvalidBencodeException<BObject>();
-                            }
-                            else
-                            {
-                                byte[] oneEntry = new byte[6];
-                                for (int i = 0; i < binaryPeersList.Length; i += 6)
-                                {
-                                    Array.Copy(binaryPeersList, i, oneEntry, 0, 6);
-                                    sharedFile.peersAddr.AddLast(GetPeerFromBytes(oneEntry));
-                                }
-                            }
-                        } else if (peers is BList)
-                        {
-                            foreach (var peerEntry in (BList)peers)
-                            {
-                                if (peerEntry is BDictionary)
-                                {
-                                    // again, exceptions..
-                                    string IP = parser.Parse<BString>(((BDictionary)peerEntry)["ip"].EncodeAsBytes()).ToString();
-                                    long port = parser.Parse<BNumber>(((BDictionary)peerEntry)["port"].EncodeAsBytes()).Value;
-                                    sharedFile.peersAddr.AddLast(new IPEndPoint(IPAddress.Parse(IP), (int)port));
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // not actually an invalid bencoding, but for simplicity
-                            throw new InvalidBencodeException<BObject>();
-                        }
-                        break;
-                }
+                Invoke(new MethodInvoker(() => FilesArea.Items[sharedFile.listViewEntryID].SubItems[2].Text = message));
             }
+            else
+            {
+                FilesArea.Items[sharedFile.listViewEntryID].SubItems[2].Text = message;
+            }
+        }
+
+        public void ShowError(string message)
+        {
+            MessageBox.Show(message, "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        public void UpdateSeedersNum(DownloadingFile sharedFile, string seeders)
+        {
+
+        }
+
+        public void UpdateLeechersNum(DownloadingFile sharedFile, string leechers)
+        {
+
         }
 
         /* gets IPv4:Port from 6-bytes array
@@ -306,7 +207,7 @@ namespace CourseWork
             return new LinkedListNode<IPEndPoint>(new IPEndPoint(new IPAddress(IPArr), port));
         }
 
-        private string GetAppropriateSizeForm(long size)
+        public static string GetAppropriateSizeForm(long size)
         {
             const double bytesInGiB = 1073741824;
             const double bytesInMiB = 1048576;
@@ -332,9 +233,13 @@ namespace CourseWork
             // TODO: close downloading file (file stream(-s)) and all this stuff
         }
 
+        // TODO: some kind of race condition when file is downloaded.. sometimes progress bar doesn't update the last one
+
         private void StopButton_Click(object sender, EventArgs e)
         {
+            // TODO: add streams flushing on stop
             // find out what file has been selected, then call Stop method
+            filesList.ElementAt(0).Stop();
         }
     }
 }

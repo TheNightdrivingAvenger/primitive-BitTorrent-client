@@ -23,6 +23,7 @@ namespace CourseWork
 
         //private LinkedList<PieceInfoNode> pendingOutgoingiecesInfo;
 
+        // TODO: add checkbox like "Save recommended folder structure?"
         public FileWorker(long pieceSize, string rootDir, Torrent torrent)
         {
             // I hope only MessageHandler's thread will write to the file, so FileShare can be read for others and write only for this thread
@@ -30,7 +31,8 @@ namespace CourseWork
             {
                 files = new FileStream[1];
                 // check FileName for errors!
-                files[0] = File.Open(rootDir + Path.DirectorySeparatorChar + torrent.File.FileName, FileMode.Create, FileAccess.Write, FileShare.Read);
+                files[0] = File.Open(rootDir + Path.DirectorySeparatorChar + ClearPath(torrent.File.FileName),
+                    FileMode.Create, FileAccess.Write, FileShare.Read);
                 files[0].SetLength(torrent.File.FileSize);
             }
             else
@@ -40,7 +42,14 @@ namespace CourseWork
                 foreach (var fileInfo in torrent.Files)
                 {
                     // will be there an exception if path (directories) does not exist? // CreateNew instead of Create?
-                    files[i] = File.Open(rootDir + Path.DirectorySeparatorChar + fileInfo.FullPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+                    string path = "";
+                    foreach (var pathPart in fileInfo.Path)
+                    {
+                        // add checking for ../../ and other stuff?
+                        path += pathPart + Path.DirectorySeparatorChar;
+                    }
+                    files[i] = File.Open(rootDir + Path.DirectorySeparatorChar + path + ClearPath(fileInfo.FileName),
+                        FileMode.Create, FileAccess.Write, FileShare.Read);
                     files[i].SetLength(fileInfo.FileSize);
                     i++;
                 }
@@ -122,6 +131,11 @@ namespace CourseWork
         public void LoadPieceFromDisk(int index)
         {
 
+        }
+
+        public static string ClearPath(string path)
+        {
+            return string.Join("_", path.Split(Path.GetInvalidFileNameChars()));
         }
     }
 }

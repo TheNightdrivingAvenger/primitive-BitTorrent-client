@@ -6,8 +6,13 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
+
+using BencodeNET.Parsing;
 using BencodeNET.Torrents;
-using System.Windows.Forms;
+using BencodeNET.Objects;
+using BencodeNET.Exceptions;
+using System.Net.Http;
 
 namespace CourseWork
 {
@@ -18,31 +23,35 @@ namespace CourseWork
     public class DownloadingFile
     {
         /* Information about shared files */
-        public string infoFilePath { get; private set; }
-        public string downloadPath { get; private set; }
-        public DownloadState state { get; set; }
+        private string infoFilePath;
+        public string downloadPath;
+        public DownloadState state { get; private set; }
         // doesn't seem like I access piece from anywhere except for MessageHandler's thread
         public BitArray pieces { get; private set; }
 
-        public long trackerInterval { get; set; }
-        public long trackerMinInterval { get; set; }
-        public string trackerID { get; set; }
+        private long trackerInterval;
+        private long trackerMinInterval;
+        private string trackerID;
+
+        private System.Threading.Timer trackerTimer;
 
         // may be accessed from several threads?
         public long downloaded { get; private set; }
         /**/
-        public long totalSize { get; private set; }
+        public long totalSize { get; }
 
         public Torrent torrentContents { get; }
         public FileWorker fileWorker { get; private set; }
         /****/
 
-        /* Information about connections */
-        public LinkedList<IPEndPoint> peersAddr { get; private set; }
-        
+        /* Connections related information */
+        private LinkedList<IPEndPoint> peersAddr;
+
         // may be accessed from several threads!
-        public LinkedList<PeerConnection> connectedPeers { get; private set; }
+        private LinkedList<PeerConnection> connectedPeers;
         /**/
+
+        private CancellationTokenSource connectionCancellationToken;
 
         // may be accessed from several threads?
         private int unchokedPeersCount;
@@ -56,7 +65,7 @@ namespace CourseWork
 
         /* UI related information */
         private MainForm ownerForm;
-        public ListViewItem listViewEntry { get; private set; }
+        public int listViewEntryID { get; private set; }
         /****/
 
         /* Handler for messages from connections */
@@ -71,10 +80,10 @@ namespace CourseWork
         /****/
 
         // block size of 16384 is recommended and highly unlikely will change
-        public DownloadingFile(MainForm ownerForm, ListViewItem entry, Torrent torrent, string infoFilePath, string downloadPath)
+        public DownloadingFile(MainForm ownerForm, int entryID, Torrent torrent, string downloadPath)
         {
             this.ownerForm = ownerForm;
-            this.listViewEntry = entry;
+            this.listViewEntryID = entryID;
 
             pieces = new BitArray(torrent.NumberOfPieces);
             peersAddr = new LinkedList<IPEndPoint>();
@@ -84,7 +93,7 @@ namespace CourseWork
             unchokedPeersCount = 0;
 
             torrentContents = torrent;
-            this.infoFilePath = infoFilePath;
+            this.infoFilePath = downloadPath + System.IO.Path.DirectorySeparatorChar + FileWorker.ClearPath(torrent.DisplayName) + "VST.session";
             this.downloadPath = downloadPath;
             fileWorker = new FileWorker(torrentContents.PieceSize, downloadPath, torrentContents);
             totalSize = torrentContents.TotalSize;
@@ -102,15 +111,137 @@ namespace CourseWork
             // TODO: saving objects to file
         }
 
-        public async Task ConnectToPeers()
+        public async Task StartAsync()
         {
             state = DownloadState.downloading;
+
+            await ConnectToTrackerAsync();
+
+            connectionCancellationToken = new CancellationTokenSource();
+            await ConnectToPeersAsync();
+        }
+
+        private async Task ConnectToTrackerAsync()
+        {
+            try
+            {
+                await EstablishTrackerConnectionAsync().ConfigureAwait(false);
+            }
+            catch (WebException)
+            {
+                // string messages? or status codes? ehh
+                ownerForm.UpdateStatus(this, MainForm.NOTRACKER);
+                return;
+            }
+            catch (HttpRequestException)
+            {
+                ownerForm.UpdateStatus(this, MainForm.NOTRACKER);
+                return;
+            }
+            catch (InvalidBencodeException<BObject>)
+            {
+                ownerForm.ShowError(MainForm.INVALTRACKRESPMSG);
+                return;
+            }
+
+            if (peersAddr.Count == 0)
+            {
+                ownerForm.UpdateStatus(this, MainForm.NOPEERSMSG);
+            }
+            else
+            {
+                ownerForm.UpdateStatus(this, MainForm.SEARCHINGPEERSMSG);
+            }
+        }
+
+        private async Task EstablishTrackerConnectionAsync()
+        {
+            var trackerResponse = new TrackerResponse();
+            await trackerResponse.GetTrackerResponse(torrentContents, downloaded, totalSize, ownerForm.myPeerID, 25000).ConfigureAwait(false);
+
+            var parser = new BencodeParser();
+            foreach (var item in trackerResponse.response)
+            {
+                switch (item.Key.ToString())
+                {
+                    case "failure reason":
+                        // something went wrong; other keys may not be present
+                        ownerForm.ShowError(MainForm.INVALTRACKRESPMSG);
+                        break;
+                    case "interval":
+                        trackerInterval = parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
+                        break;
+                    case "min interval":
+                        trackerMinInterval = parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
+                        break;
+                    case "tracker id":
+                        trackerID = parser.Parse<BString>(item.Value.EncodeAsBytes()).ToString();
+                        break;
+                    case "complete":
+                        ownerForm.UpdateSeedersNum(this, item.Value.EncodeAsString());
+                        // number of seeders (peers with completed file). Only for UI purposes I guess...
+                        break;
+                    case "incomplete":
+                        ownerForm.UpdateLeechersNum(this, item.Value.EncodeAsString());
+                        // number of leechers; purpose is the same
+                        break;
+                    case "peers":
+                        var peers = parser.Parse(item.Value.EncodeAsBytes());
+                        if (peers is BString)
+                        {
+                            byte[] binaryPeersList;
+                            binaryPeersList = ((BString)peers).Value.ToArray();
+                            if (binaryPeersList.Length % 6 != 0)
+                            {
+                                // not actually an invalid bencoding, but for simplicity
+                                throw new InvalidBencodeException<BObject>();
+                            }
+                            else
+                            {
+                                byte[] oneEntry = new byte[6];
+                                for (int i = 0; i < binaryPeersList.Length; i += 6)
+                                {
+                                    Array.Copy(binaryPeersList, i, oneEntry, 0, 6);
+                                    peersAddr.AddLast(GetPeerFromBytes(oneEntry));
+                                }
+                            }
+                        }
+                        else if (peers is BList)
+                        {
+                            foreach (var peerEntry in (BList)peers)
+                            {
+                                if (peerEntry is BDictionary)
+                                {
+                                    // again, exceptions..
+                                    string IP = parser.Parse<BString>(((BDictionary)peerEntry)["ip"].EncodeAsBytes()).ToString();
+                                    long port = parser.Parse<BNumber>(((BDictionary)peerEntry)["port"].EncodeAsBytes()).Value;
+                                    peersAddr.AddLast(new IPEndPoint(IPAddress.Parse(IP), (int)port));
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // not actually an invalid bencoding, but for simplicity
+                            throw new InvalidBencodeException<BObject>();
+                        }
+                        break;
+                }
+            }
+        }
+
+        private async Task ConnectToPeersAsync()
+        {
             foreach (var peer in peersAddr)
             {
+                if (connectionCancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
                 var connection = new PeerConnection(peer, MessageRecieved, pieces.Count, torrentContents.OriginalInfoHashBytes);
                 try
                 {
-                    if (await connection.PeerHandshake(torrentContents.OriginalInfoHashBytes, ownerForm.myPeerID) == 0)
+                    if (await connection.PeerHandshakeAsync(torrentContents.OriginalInfoHashBytes, ownerForm.myPeerID,
+                        connectionCancellationToken) == 0)
                     {
                         lock (connectedPeers)
                         {
@@ -124,16 +255,12 @@ namespace CourseWork
                         connection.CloseConnection();
                     }
                 }
-                catch (SocketException ex)
-                {
-                    connection.CloseConnection();
-                }
-                // IO for some reason if host reset the connection :/
-                catch (System.IO.IOException)
+                catch
                 {
                     connection.CloseConnection();
                 }
             }
+            connectionCancellationToken.Dispose();
         }
 
         private void MessageRecieved(PeerMessage msg, PeerConnection connection)
@@ -141,15 +268,7 @@ namespace CourseWork
             // if msg == null, close the connection and remove it from the list
             if (msg == null)
             {
-                connection.CloseConnection();
-                lock (connectedPeers)
-                {
-                    connectedPeers.Remove(connection);
-                }
-                ReceivedChokeOrDisconnected(connection);
-                ownerForm.PeerConnectedDisconnectedEvent(this, connectedPeers.Count);
-                // remove the connection from the list! Will it work like this?
-                // It should be equal by reference too tho, so should work
+                messageHandler.AddTask(new CommandMessage(ControlMessageType.CloseConnection, this, connection, -1, -1, -1));
             }
             else
             {
@@ -159,33 +278,78 @@ namespace CourseWork
             }
         }
 
+        public void RemoveConnection(PeerConnection connection)
+        {
+            // I guess I don't need exception-handling
+            lock (connectedPeers)
+            {
+                connectedPeers.Remove(connection);
+            }
+            ReceivedChokeOrDisconnected(connection);
+            ownerForm.PeerConnectedDisconnectedEvent(this, connectedPeers.Count);
+        }
+
         public void Stop()
         {
             // removing all pending requests from both pendingPieces list and connections
             // if needed, send "cancel" to peer
             state = DownloadState.stopped;
-            foreach (var peer in connectedPeers)
+
+            connectionCancellationToken.Cancel();
+            lock (connectedPeers)
             {
-                for (int i = 0; i < peer.outgoingRequests.Length; i++)
+                foreach (var peer in connectedPeers)
                 {
-                    if (peer.outgoingRequests[i] != null)
+                    if (peer.outgoingRequestsCount != 0)
                     {
-                        // no null-checking because it can't be null
-                        PieceInfoNode node;
-                        node = FindRequestsPiece(peer.outgoingRequests[i].Item1);
-                        node.requestedBlocksMap[peer.outgoingRequests[i].Item2 / blockSize] = false;
+                        for (int i = 0; i < peer.outgoingRequests.Length; i++)
+                        {
+                            if (peer.outgoingRequests[i] != null)
+                            {
+                                // no null-checking because it can't be null
+                                PieceInfoNode node;
+                                node = FindRequestsPiece(peer.outgoingRequests[i].Item1);
+                                int blockIndex = peer.outgoingRequests[i].Item2 / blockSize;
 
-                        var msg = new CommandMessage(ControlMessageType.SendCancel, node.pieceIndex,
-                            peer.outgoingRequests[i].Item2 / blockSize);
-                        msg.targetConnection = peer;
-                        msg.targetFile = this;
+                                int realBlockSize;
+                                if (blockIndex == node.blocksMap.Count - 1)
+                                {
+                                    realBlockSize = GetLastBlockSize(node.pieceIndex);
+                                }
+                                else
+                                {
+                                    realBlockSize = blockSize;
+                                }
 
-                        messageHandler.AddTask(msg);
+                                // TODO: uTorrent just resets the connection after "cancels"
+                                // Idk if it's a good idea actually... Hmmm
+                                // well, I can just send "cancel" and remove entry from pending list then
+                                // yep, it sends "stopped" to tracker, then makes a new request
 
-                        peer.outgoingRequests[i] = null;
+                                messageHandler.AddTask(new CommandMessage(ControlMessageType.SendCancel, this, peer, node.pieceIndex,
+                                    peer.outgoingRequests[i].Item2 / blockSize, realBlockSize));
+
+
+                                messageHandler.AddTask(new CommandMessage(ControlMessageType.CloseConnection, this, peer, -1, -1, -1));
+
+                                peer.outgoingRequests[i] = null;
+                            }
+                        }
                     }
                 }
             }
+            pendingIncomingPiecesInfo.Clear();
+            connectedPeers.Clear();
+        }
+
+
+
+        private LinkedListNode<IPEndPoint> GetPeerFromBytes(byte[] peer)
+        {
+            byte[] IPArr = new byte[4];
+            Array.Copy(peer, IPArr, 4);
+            int port = peer[4] * 256 + peer[5];
+            return new LinkedListNode<IPEndPoint>(new IPEndPoint(new IPAddress(IPArr), port));
         }
 
         public void ProgramClosing()
@@ -293,6 +457,7 @@ namespace CourseWork
 
         private PieceInfoNode FindRequestsPiece(int pieceIndex)
         {
+            // TODO: lock?
             foreach (var entry in pendingIncomingPiecesInfo)
             {
                 if (entry.pieceIndex == pieceIndex)
@@ -354,6 +519,11 @@ namespace CourseWork
                                 SendBroadcastHave(entry.Value.pieceIndex);
                                 pieces[pieceIndex] = true;
 
+                                if (downloaded == totalSize)
+                                {
+                                    // TODO: send the event to the tracker
+                                }
+
                                 ownerForm.UpdateProgress(this);
                                 // if download is complete, need to send "Completed" event to the tracker
                             }
@@ -401,24 +571,37 @@ namespace CourseWork
 
         private void SendBroadcastHave(int pieceIndex)
         {
-            // TODO: lock?
             var msg = new PeerMessage(pieceIndex);
-            foreach (var connection in connectedPeers)
+            // TODO: maybe, I lock them for too long? Maybe copy, then work?
+            lock (connectedPeers)
             {
-                connection.SendPeerMessage(msg);
+                foreach (var connection in connectedPeers)
+                {
+                    try
+                    {
+                        connection.SendPeerMessage(msg);
+                    }
+                    catch
+                    {
+                        messageHandler.AddTask(new CommandMessage(ControlMessageType.CloseConnection, this, connection, -1, -1, -1));
+                    }
+                }
             }
         }
 
         public void ReceivedChokeOrDisconnected(PeerConnection connection)
         {
-            for (int i = 0; i < connection.outgoingRequests.Length; i++)
+            if (connection.outgoingRequestsCount != 0)
             {
-                if (connection.outgoingRequests[i] != null)
+                for (int i = 0; i < connection.outgoingRequests.Length; i++)
                 {
-                    // no null-checking because it can't be null
-                    FindRequestsPiece(connection.outgoingRequests[i].Item1).requestedBlocksMap[connection.outgoingRequests[i].Item2 /
-                        blockSize] = false;
-                    connection.outgoingRequests[i] = null;
+                    if (connection.outgoingRequests[i] != null)
+                    {
+                        // no null-checking because it can't be null
+                        FindRequestsPiece(connection.outgoingRequests[i].Item1).requestedBlocksMap[connection.outgoingRequests[i].Item2 /
+                            blockSize] = false;
+                        connection.outgoingRequests[i] = null;
+                    }
                 }
             }
         }
