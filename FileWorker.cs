@@ -3,35 +3,30 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
-
+using System.Threading.Tasks;
 using BencodeNET.Torrents;
 
 namespace CourseWork
 {
     public class FileWorker
     {
-        // element contains piece index, buffer actual (used) size, piece buffer and BitArray describing the piece
-
-        /*private long pieceOffset;
-        private int blockSize;
-        public long lastPieceSize { get; private set; }
-        public long totalSize { get; private set; }*/
-
         private FileStream[] files;
         private string rootDir;
+        private string infoFileName;
+        private FileStream infoFile;
         Torrent torrent;
 
         //private LinkedList<PieceInfoNode> pendingOutgoingiecesInfo;
 
         // TODO: add checkbox like "Save recommended folder structure?"
-        public FileWorker(long pieceSize, string rootDir, Torrent torrent)
+        public FileWorker(long pieceSize, string rootDir, string infoFileName, Torrent torrent)
         {
             // I hope only MessageHandler's thread will write to the file, so FileShare can be read for others and write only for this thread
             if (torrent.File != null)
             {
                 files = new FileStream[1];
                 // check FileName for errors!
-                files[0] = File.Open(rootDir + Path.DirectorySeparatorChar + ClearPath(torrent.File.FileName),
+                files[0] = File.Open(rootDir + ClearPath(torrent.File.FileName),
                     FileMode.Create, FileAccess.Write, FileShare.Read);
                 files[0].SetLength(torrent.File.FileSize);
             }
@@ -45,24 +40,25 @@ namespace CourseWork
                     string path = "";
                     foreach (var pathPart in fileInfo.Path)
                     {
-                        // add checking for ../../ and other stuff?
-                        path += pathPart + Path.DirectorySeparatorChar;
+                        path += Path.DirectorySeparatorChar + ClearPath(pathPart);
                     }
-                    files[i] = File.Open(rootDir + Path.DirectorySeparatorChar + path + ClearPath(fileInfo.FileName),
+                    path.Remove(0, 1);
+                    files[i] = File.Open(rootDir + path,
                         FileMode.Create, FileAccess.Write, FileShare.Read);
                     files[i].SetLength(fileInfo.FileSize);
                     i++;
                 }
             }
+            infoFile = File.Open(rootDir + infoFileName, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
 
             this.rootDir = rootDir;
             this.torrent = torrent;
+            this.infoFileName = infoFileName;
         }
 
         public bool SaveToDisk(PieceInfoNode entry)
         {
             byte[] hashResult;
-            // something is wrong with resulting hash..
             using (SHA1 hasher = new SHA1CryptoServiceProvider())
             {
                 hashResult = hasher.ComputeHash(entry.pieceBuffer);
@@ -70,7 +66,6 @@ namespace CourseWork
             // check if HASH is OK
             if (!CompareHashes(hashResult, entry.pieceIndex * 20))
             {
-                // an error here.. TODO: Need to drop the piece and mark it as available for downloading
                 return false;
             }
             
@@ -121,12 +116,18 @@ namespace CourseWork
             return false;
         }
 
-        public void AddToPieceBuffer(int index, byte[] block, int offset)
+        public async Task FlushAllAsync()
         {
-            
+            for (int i = 0; i < files.Length; i++)
+            {
+                await files[i].FlushAsync();
+            }
         }
 
-        //public void AddPendingOutgoingPiece()
+        public void SaveSession()
+        {
+
+        }
 
         public void LoadPieceFromDisk(int index)
         {

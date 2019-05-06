@@ -40,22 +40,24 @@
             this.SizeLbl = new System.Windows.Forms.Label();
             this.NameLbl = new System.Windows.Forms.Label();
             this.PathBox = new System.Windows.Forms.GroupBox();
-            this.DownloadPath = new System.Windows.Forms.TextBox();
-            this.label1 = new System.Windows.Forms.Label();
-            this.DownloadPathDialog = new System.Windows.Forms.FolderBrowserDialog();
-            this.BrowseFolderButton = new System.Windows.Forms.Button();
             this.CreateSubFolder = new System.Windows.Forms.CheckBox();
+            this.BrowseFolderButton = new System.Windows.Forms.Button();
+            this.label1 = new System.Windows.Forms.Label();
+            this.DownloadPath = new System.Windows.Forms.TextBox();
+            this.DownloadPathDialog = new System.Windows.Forms.FolderBrowserDialog();
+            this.panel1 = new System.Windows.Forms.Panel();
             this.ContentsBox.SuspendLayout();
             this.PathBox.SuspendLayout();
+            this.panel1.SuspendLayout();
             this.SuspendLayout();
             // 
             // AddTorrentOK
             // 
-            this.AddTorrentOK.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.AddTorrentOK.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
             this.AddTorrentOK.Enabled = false;
-            this.AddTorrentOK.Location = new System.Drawing.Point(0, 411);
+            this.AddTorrentOK.Location = new System.Drawing.Point(400, 17);
             this.AddTorrentOK.Name = "AddTorrentOK";
-            this.AddTorrentOK.Size = new System.Drawing.Size(664, 41);
+            this.AddTorrentOK.Size = new System.Drawing.Size(118, 38);
             this.AddTorrentOK.TabIndex = 0;
             this.AddTorrentOK.Text = "OK";
             this.AddTorrentOK.UseVisualStyleBackColor = true;
@@ -63,10 +65,10 @@
             // 
             // AddTorrentCancel
             // 
-            this.AddTorrentCancel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.AddTorrentCancel.Location = new System.Drawing.Point(0, 369);
+            this.AddTorrentCancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
+            this.AddTorrentCancel.Location = new System.Drawing.Point(524, 17);
             this.AddTorrentCancel.Name = "AddTorrentCancel";
-            this.AddTorrentCancel.Size = new System.Drawing.Size(664, 42);
+            this.AddTorrentCancel.Size = new System.Drawing.Size(128, 38);
             this.AddTorrentCancel.TabIndex = 1;
             this.AddTorrentCancel.Text = "Cancel";
             this.AddTorrentCancel.UseVisualStyleBackColor = true;
@@ -171,37 +173,10 @@
             this.PathBox.Dock = System.Windows.Forms.DockStyle.Fill;
             this.PathBox.Location = new System.Drawing.Point(0, 129);
             this.PathBox.Name = "PathBox";
-            this.PathBox.Size = new System.Drawing.Size(664, 240);
+            this.PathBox.Size = new System.Drawing.Size(664, 323);
             this.PathBox.TabIndex = 0;
             this.PathBox.TabStop = false;
             this.PathBox.Text = "Download settings";
-            // 
-            // DownloadPath
-            // 
-            this.DownloadPath.Location = new System.Drawing.Point(12, 42);
-            this.DownloadPath.Name = "DownloadPath";
-            this.DownloadPath.ReadOnly = true;
-            this.DownloadPath.Size = new System.Drawing.Size(520, 22);
-            this.DownloadPath.TabIndex = 0;
-            // 
-            // label1
-            // 
-            this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(9, 22);
-            this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(180, 17);
-            this.label1.TabIndex = 0;
-            this.label1.Text = "Choose the download path:";
-            // 
-            // BrowseFolderButton
-            // 
-            this.BrowseFolderButton.Location = new System.Drawing.Point(539, 40);
-            this.BrowseFolderButton.Name = "BrowseFolderButton";
-            this.BrowseFolderButton.Size = new System.Drawing.Size(119, 24);
-            this.BrowseFolderButton.TabIndex = 1;
-            this.BrowseFolderButton.Text = "Browse...";
-            this.BrowseFolderButton.UseVisualStyleBackColor = true;
-            this.BrowseFolderButton.Click += new System.EventHandler(this.BrowseFolderButton_Click);
             // 
             // CreateSubFolder
             // 
@@ -213,15 +188,55 @@
             this.CreateSubFolder.Text = "Create subfolder";
             this.CreateSubFolder.UseVisualStyleBackColor = true;
             // 
+            // BrowseFolderButton
+            // 
+            this.BrowseFolderButton.Location = new System.Drawing.Point(539, 40);
+            this.BrowseFolderButton.Name = "BrowseFolderButton";
+            this.BrowseFolderButton.Size = new System.Drawing.Size(119, 34);
+            this.BrowseFolderButton.TabIndex = 1;
+            this.BrowseFolderButton.Text = "Browse...";
+            this.BrowseFolderButton.UseVisualStyleBackColor = true;
+            this.BrowseFolderButton.Click += new System.EventHandler(this.BrowseFolderButton_Click);
+            // 
+            // label1
+            // 
+            this.label1.AutoSize = true;
+            this.label1.Location = new System.Drawing.Point(9, 22);
+            this.label1.Name = "label1";
+            this.label1.Size = new System.Drawing.Size(180, 17);
+            this.label1.TabIndex = 0;
+            this.label1.Text = "Choose the download path:";
+            // 
+            // DownloadPath
+            // 
+            this.DownloadPath.Location = new System.Drawing.Point(12, 42);
+            this.DownloadPath.Name = "DownloadPath";
+            this.DownloadPath.ReadOnly = true;
+            this.DownloadPath.Size = new System.Drawing.Size(520, 22);
+            this.DownloadPath.TabIndex = 0;
+            // 
+            // DownloadPathDialog
+            // 
+            this.DownloadPathDialog.RootFolder = System.Environment.SpecialFolder.MyComputer;
+            // 
+            // panel1
+            // 
+            this.panel1.Controls.Add(this.AddTorrentCancel);
+            this.panel1.Controls.Add(this.AddTorrentOK);
+            this.panel1.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.panel1.Location = new System.Drawing.Point(0, 391);
+            this.panel1.Name = "panel1";
+            this.panel1.Size = new System.Drawing.Size(664, 61);
+            this.panel1.TabIndex = 2;
+            // 
             // TorrentInfo
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(664, 452);
+            this.Controls.Add(this.panel1);
             this.Controls.Add(this.PathBox);
             this.Controls.Add(this.ContentsBox);
-            this.Controls.Add(this.AddTorrentCancel);
-            this.Controls.Add(this.AddTorrentOK);
             this.Name = "TorrentInfo";
             this.Text = "TorrentInfo";
             this.Load += new System.EventHandler(this.TorrentInfo_Load);
@@ -229,6 +244,7 @@
             this.ContentsBox.PerformLayout();
             this.PathBox.ResumeLayout(false);
             this.PathBox.PerformLayout();
+            this.panel1.ResumeLayout(false);
             this.ResumeLayout(false);
 
         }
@@ -252,5 +268,6 @@
         private System.Windows.Forms.Button BrowseFolderButton;
         private System.Windows.Forms.FolderBrowserDialog DownloadPathDialog;
         private System.Windows.Forms.CheckBox CreateSubFolder;
+        private System.Windows.Forms.Panel panel1;
     }
 }

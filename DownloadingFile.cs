@@ -18,7 +18,6 @@ namespace CourseWork
 {
     public enum DownloadState { queued, downloading, stopped };
 
-    // TODO: need a timer for tracker reconnections, choking-unchoking
     // TODO: finally get all the needed stuff locked!!!
     public class DownloadingFile
     {
@@ -31,14 +30,15 @@ namespace CourseWork
 
         private long trackerInterval;
         private long trackerMinInterval;
-        private string trackerID;
+        public string trackerID { get; private set; }
 
-        private System.Threading.Timer trackerTimer;
+        private Timer trackerTimer;
 
         // may be accessed from several threads?
         public long downloaded { get; private set; }
         /**/
         public long totalSize { get; }
+        public long uploaded { get; private set; }
 
         public Torrent torrentContents { get; }
         public FileWorker fileWorker { get; private set; }
@@ -51,7 +51,7 @@ namespace CourseWork
         private LinkedList<PeerConnection> connectedPeers;
         /**/
 
-        private CancellationTokenSource connectionCancellationToken;
+        private CancellationTokenSource connectionsCancellationToken;
 
         // may be accessed from several threads?
         private int unchokedPeersCount;
@@ -79,6 +79,8 @@ namespace CourseWork
         private long lastPieceSize;
         /****/
 
+        public delegate void TimeOutCallBack(PeerConnection connection);
+
         // block size of 16384 is recommended and highly unlikely will change
         public DownloadingFile(MainForm ownerForm, int entryID, Torrent torrent, string downloadPath)
         {
@@ -90,12 +92,18 @@ namespace CourseWork
             connectedPeers = new LinkedList<PeerConnection>();
             state = DownloadState.stopped;
 
+            trackerID = null;
+            trackerInterval = 0;
+            trackerMinInterval = 0;
+            downloaded = 0;
+            uploaded = 0;
+
             unchokedPeersCount = 0;
 
             torrentContents = torrent;
-            this.infoFilePath = downloadPath + System.IO.Path.DirectorySeparatorChar + FileWorker.ClearPath(torrent.DisplayName) + "VST.session";
+            this.infoFilePath = downloadPath + FileWorker.ClearPath(torrent.DisplayName) + "VST.session";
             this.downloadPath = downloadPath;
-            fileWorker = new FileWorker(torrentContents.PieceSize, downloadPath, torrentContents);
+            fileWorker = new FileWorker(torrentContents.PieceSize, downloadPath, infoFilePath, torrentContents);
             totalSize = torrentContents.TotalSize;
 
             lastPieceSize = (int)(torrent.NumberOfPieces * torrent.PieceSize - totalSize);
@@ -115,33 +123,53 @@ namespace CourseWork
         {
             state = DownloadState.downloading;
 
-            await ConnectToTrackerAsync();
+            int result = await FirstConnectToTrackerAsync().ConfigureAwait(false);
 
-            connectionCancellationToken = new CancellationTokenSource();
-            await ConnectToPeersAsync();
+            if (result == 0)
+            {
+                if (trackerInterval != 0)
+                {
+                    trackerTimer = new Timer(ReannounceTimerCallback, null, trackerInterval * 1000, trackerInterval * 1000);
+                }
+                else
+                {
+                    // if for some reason we didn't get the interval, set it to 50 minutes
+                    trackerTimer = new Timer(ReannounceTimerCallback, null, 50 * 60 * 1000, 50 * 60 * 1000);
+                }
+                connectionsCancellationToken = new CancellationTokenSource();
+                await ConnectToPeersAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                state = DownloadState.stopped;
+            }
         }
 
-        private async Task ConnectToTrackerAsync()
+        private void ReannounceTimerCallback(object info)
+        {
+            // TODO: interval reannounce here
+        }
+
+        private async Task<int> FirstConnectToTrackerAsync()
         {
             try
             {
-                await EstablishTrackerConnectionAsync().ConfigureAwait(false);
+                await GetAndParseTrackerResponseAsync().ConfigureAwait(false);
             }
             catch (WebException)
             {
-                // string messages? or status codes? ehh
                 ownerForm.UpdateStatus(this, MainForm.NOTRACKER);
-                return;
+                return 1;
             }
             catch (HttpRequestException)
             {
                 ownerForm.UpdateStatus(this, MainForm.NOTRACKER);
-                return;
+                return 1;
             }
             catch (InvalidBencodeException<BObject>)
             {
                 ownerForm.ShowError(MainForm.INVALTRACKRESPMSG);
-                return;
+                return 1;
             }
 
             if (peersAddr.Count == 0)
@@ -152,12 +180,14 @@ namespace CourseWork
             {
                 ownerForm.UpdateStatus(this, MainForm.SEARCHINGPEERSMSG);
             }
+            return 0;
         }
 
-        private async Task EstablishTrackerConnectionAsync()
+        private async Task GetAndParseTrackerResponseAsync()
         {
             var trackerResponse = new TrackerResponse();
-            await trackerResponse.GetTrackerResponse(torrentContents, downloaded, totalSize, ownerForm.myPeerID, 25000).ConfigureAwait(false);
+            await trackerResponse.GetTrackerResponse(torrentContents, downloaded, totalSize,
+                ownerForm.myPeerID, 25000, "started", trackerID).ConfigureAwait(false);
 
             var parser = new BencodeParser();
             foreach (var item in trackerResponse.response)
@@ -166,7 +196,7 @@ namespace CourseWork
                 {
                     case "failure reason":
                         // something went wrong; other keys may not be present
-                        ownerForm.ShowError(MainForm.INVALTRACKRESPMSG);
+                        ownerForm.ShowError(MainForm.TRACKERERRORMSG + item.Value.EncodeAsString());
                         break;
                     case "interval":
                         trackerInterval = parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
@@ -212,7 +242,6 @@ namespace CourseWork
                             {
                                 if (peerEntry is BDictionary)
                                 {
-                                    // again, exceptions..
                                     string IP = parser.Parse<BString>(((BDictionary)peerEntry)["ip"].EncodeAsBytes()).ToString();
                                     long port = parser.Parse<BNumber>(((BDictionary)peerEntry)["port"].EncodeAsBytes()).Value;
                                     peersAddr.AddLast(new IPEndPoint(IPAddress.Parse(IP), (int)port));
@@ -233,15 +262,16 @@ namespace CourseWork
         {
             foreach (var peer in peersAddr)
             {
-                if (connectionCancellationToken.IsCancellationRequested)
+                if (connectionsCancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
-                var connection = new PeerConnection(peer, MessageRecieved, pieces.Count, torrentContents.OriginalInfoHashBytes);
+                var connection = new PeerConnection(peer, MessageRecieved, pieces.Count, torrentContents.OriginalInfoHashBytes,
+                    ConnectionTimeOut);
                 try
                 {
                     if (await connection.PeerHandshakeAsync(torrentContents.OriginalInfoHashBytes, ownerForm.myPeerID,
-                        connectionCancellationToken) == 0)
+                        connectionsCancellationToken).ConfigureAwait(false) == 0)
                     {
                         lock (connectedPeers)
                         {
@@ -260,7 +290,12 @@ namespace CourseWork
                     connection.CloseConnection();
                 }
             }
-            connectionCancellationToken.Dispose();
+            connectionsCancellationToken.Dispose();
+        }
+
+        private void ConnectionTimeOut(PeerConnection connection)
+        {
+            messageHandler.AddTask(new CommandMessage(ControlMessageType.SendKeepAlive, this, connection, -1, -1, -1));
         }
 
         private void MessageRecieved(PeerMessage msg, PeerConnection connection)
@@ -289,59 +324,39 @@ namespace CourseWork
             ownerForm.PeerConnectedDisconnectedEvent(this, connectedPeers.Count);
         }
 
-        public void Stop()
+        public async Task Stop()
         {
             // removing all pending requests from both pendingPieces list and connections
             // if needed, send "cancel" to peer
             state = DownloadState.stopped;
 
-            connectionCancellationToken.Cancel();
-            lock (connectedPeers)
+            try
             {
-                foreach (var peer in connectedPeers)
-                {
-                    if (peer.outgoingRequestsCount != 0)
-                    {
-                        for (int i = 0; i < peer.outgoingRequests.Length; i++)
-                        {
-                            if (peer.outgoingRequests[i] != null)
-                            {
-                                // no null-checking because it can't be null
-                                PieceInfoNode node;
-                                node = FindRequestsPiece(peer.outgoingRequests[i].Item1);
-                                int blockIndex = peer.outgoingRequests[i].Item2 / blockSize;
-
-                                int realBlockSize;
-                                if (blockIndex == node.blocksMap.Count - 1)
-                                {
-                                    realBlockSize = GetLastBlockSize(node.pieceIndex);
-                                }
-                                else
-                                {
-                                    realBlockSize = blockSize;
-                                }
-
-                                // TODO: uTorrent just resets the connection after "cancels"
-                                // Idk if it's a good idea actually... Hmmm
-                                // well, I can just send "cancel" and remove entry from pending list then
-                                // yep, it sends "stopped" to tracker, then makes a new request
-
-                                messageHandler.AddTask(new CommandMessage(ControlMessageType.SendCancel, this, peer, node.pieceIndex,
-                                    peer.outgoingRequests[i].Item2 / blockSize, realBlockSize));
-
-
-                                messageHandler.AddTask(new CommandMessage(ControlMessageType.CloseConnection, this, peer, -1, -1, -1));
-
-                                peer.outgoingRequests[i] = null;
-                            }
-                        }
-                    }
-                }
+                connectionsCancellationToken.Cancel();
             }
-            pendingIncomingPiecesInfo.Clear();
-            connectedPeers.Clear();
-        }
+            catch (ObjectDisposedException)
+            {
+                // all possible peers from peersAddr list are connected, so this token is already disposed
+            }
 
+            var peer = connectedPeers.First;
+            // no locking because while I go through all connected peers I post messages
+            // for closing connections; closing means removing from this list,
+            // that means acquiring lock. So MessageHandler's Message Pump would be stopped until
+            // I sorted out all the connections and released the lock
+            // and by this point nothing new can be added to this list, so it's safe
+            while (peer != null)
+            {
+                var nextPeer = peer.Next;
+                messageHandler.AddTask(new CommandMessage(ControlMessageType.CloseConnection, this, peer.Value, -1, -1, -1));
+                peer = nextPeer;
+            }
+            // I don't clear the list of incoming pieces because maybe it'll be used later;
+            // TODO: clear it when program is closing or when another download started
+            connectedPeers.Clear();
+            await fileWorker.FlushAllAsync();
+            ReannounceAsync("stopped");
+        }
 
 
         private LinkedListNode<IPEndPoint> GetPeerFromBytes(byte[] peer)
@@ -354,7 +369,7 @@ namespace CourseWork
 
         public void ProgramClosing()
         {
-            // TODO: implement graceful closing
+            // TODO: implement graceful closing (call stop I guess)
         }
 
         // called from separate thread, synchronization is needed
@@ -376,12 +391,6 @@ namespace CourseWork
         // returns piece index, piece offset, block size
         public Tuple<int, int, int> FindNextRequest(PeerConnection connection)
         {
-            // too many requests can be bad, so cap 'em (now it's controlled in connections)
-            /*if (outgoingRequestsCount >= maxOutgoingRequestsCount)
-            {
-                return null;
-            }*/
-
             Tuple<int, int, int> result;
             // можно добавить флаг для того, чтобы различать: у пира нет кусочков из моего списка,
             // или просто все блоки уже запрошены и надо запросить новый кусочек, но не содержащийся в этом списке.
@@ -419,9 +428,7 @@ namespace CourseWork
                     {
                         result = new Tuple<int, int, int>(entry.pieceIndex, resultOffset, blockSize);
                     }
-                    //outgoingRequestsCount++;
                     entry.requestedBlocksMap[blockIndex] = true;
-                    connection.AddOutgoingRequest(result.Item1, result.Item2);
                     return result;
                 }
             }
@@ -431,8 +438,6 @@ namespace CourseWork
 
             // if we didn't find anything in pieces we're already downloading (or the Peer doesn't have it),
             // we simply find the first fitting piece the Peer has
-            // зациклился по одному кусочку потому, что здесь нахожу первый не скачанный...
-            // а надо находить первый не запрошенный
             int interestingPieceIndex = -1;
             for (int i = 0; i < connection.peersPieces.Count; i++)
             {
@@ -449,15 +454,22 @@ namespace CourseWork
             }
 
             // peer has some piece we haven't added yet; so we add it and request block with 0-offset (the first one)
-            connection.AddOutgoingRequest(interestingPieceIndex, 0);
-            AddPendingIncomingPiece(interestingPieceIndex);
-            // TODO: I guess I need to figure out real BlockSize, not just standard (what if the first block is smaller than normal, lol)
-            return new Tuple<int, int, int>(interestingPieceIndex, 0, blockSize);
+            var newEntry = AddPendingIncomingPiece(interestingPieceIndex);
+            newEntry.requestedBlocksMap[0] = true;
+            pendingIncomingPiecesInfo.AddLast(newEntry);
+            // just for safety (what if it's only one block in piece?)
+            if (0 == newEntry.blocksMap.Count - 1)
+            {
+                return new Tuple<int, int, int>(interestingPieceIndex, 0, GetLastBlockSize(newEntry.pieceIndex));
+            }
+            else
+            {
+                return new Tuple<int, int, int>(interestingPieceIndex, 0, blockSize);
+            }
         }
 
         private PieceInfoNode FindRequestsPiece(int pieceIndex)
         {
-            // TODO: lock?
             foreach (var entry in pendingIncomingPiecesInfo)
             {
                 if (entry.pieceIndex == pieceIndex)
@@ -487,70 +499,102 @@ namespace CourseWork
             }
         }
 
-        public void AddBlock(int pieceIndex, int offset, byte[] block)
+        private async void ReannounceAsync(string message)
         {
-            var entry = pendingIncomingPiecesInfo.First;
-            bool found = false;
-            while (entry != null && !found)
+            // I don't care if this request didn't work out.
+            // I'm only interested in getting (if any) new reannounce interval
+            // so it's async void, and I'm gonna try {...} catch {};
+            try
             {
-                var nextNode = entry.Next;
-                if (entry.Value.pieceIndex == pieceIndex)
-                {
-                    if (entry.Value.blocksMap[offset / blockSize] == false)
-                    {
-                        // block.length because the last block may be smaller than others
-                        Array.Copy(block, 0, entry.Value.pieceBuffer, offset, block.Length);
-                        entry.Value.blocksMap[offset / blockSize] = true;
-                        entry.Value.bufferSize += block.Length;
-                        //outgoingRequestsCount--;
-
-                        downloaded += block.Length;
-                        
-
-                        // we accumulated the whole piece?
-                        if (entry.Value.bufferSize == entry.Value.pieceBuffer.Length)
-                        {
-                            // check SHA1 and save to disk if OK
-                            if (fileWorker.SaveToDisk(entry.Value))
-                            {
-                                // remove from pending incoming requests
-                                pendingIncomingPiecesInfo.Remove(entry);
-                                // Now we can send "HAVE" message
-                                SendBroadcastHave(entry.Value.pieceIndex);
-                                pieces[pieceIndex] = true;
-
-                                if (downloaded == totalSize)
-                                {
-                                    // TODO: send the event to the tracker
-                                }
-
-                                ownerForm.UpdateProgress(this);
-                                // if download is complete, need to send "Completed" event to the tracker
-                            }
-                            else
-                            {
-                                // if not, need to download the whole piece again
-                                /*entry.Value.blocksMap.SetAll(false);
-                                entry.Value.requestedBlocksMap.SetAll(false);
-                                entry.Value.bufferSize = 0;*/
-                                pendingIncomingPiecesInfo.Remove(entry);
-
-                                downloaded -= entry.Value.pieceBuffer.Length;
-                            }
-                        }
-                    }
-                    found = true;
-                }
-                entry = nextNode;
+                await GetAndParseReannounceResponseAsync(message);
             }
-            if (!found)
+            catch{}
+        }
+
+        private async Task GetAndParseReannounceResponseAsync(string message)
+        {
+            var trackerResponse = new TrackerResponse();
+            await trackerResponse.GetTrackerResponse(torrentContents, downloaded, totalSize,
+                ownerForm.myPeerID, 25000, message, trackerID).ConfigureAwait(false);
+
+            var parser = new BencodeParser();
+            foreach (var item in trackerResponse.response)
             {
-                // something went really wrong. I recieved a block I didn't asked for. Can it happen? What should I do?
-                // Create a new entry for it, or just discard it? Or sever the connection? So many questions
+                switch (item.Key.ToString())
+                {
+                    case "interval":
+                        // reset timer?
+                        trackerInterval = parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
+                        break;
+                    case "min interval":
+                        trackerMinInterval = parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
+                        break;
+                    case "tracker id":
+                        trackerID = parser.Parse<BString>(item.Value.EncodeAsBytes()).ToString();
+                        break;
+                }
             }
         }
 
-        private void AddPendingIncomingPiece(int index)
+        public void AddBlock(int pieceIndex, int offset, byte[] block)
+        {
+            var entry = FindRequestsPiece(pieceIndex);
+
+            if (entry != null && entry.blocksMap[offset / blockSize] == false)
+            {
+                // check for safety. If received a block that is larger than we could possibly ask for,
+                // then consider it as ill-formed and drop it
+                if (block.Length > 16384)
+                {
+                    entry.requestedBlocksMap[offset / blockSize] = false;
+                    return;
+                }
+
+                // block.length because the last block may be smaller than others
+                Array.Copy(block, 0, entry.pieceBuffer, offset, block.Length);
+                entry.blocksMap[offset / blockSize] = true;
+                entry.bufferSize += block.Length;
+
+                downloaded += block.Length;
+
+                // we accumulated the whole piece?
+                if (entry.bufferSize == entry.pieceBuffer.Length)
+                {
+                    // check SHA1 and save to disk if OK
+                    if (fileWorker.SaveToDisk(entry))
+                    {
+                        // remove from pending incoming requests
+                        pendingIncomingPiecesInfo.Remove(entry);
+                        pieces[pieceIndex] = true;
+
+                        ownerForm.UpdateProgress(this);
+                        
+                        // Now we can send "HAVE" message
+                        SendBroadcastHave(entry.pieceIndex);
+
+                        if (downloaded == totalSize)
+                        {
+                            // TODO: send the completed event to the tracker
+                            ReannounceAsync("completed");
+                        }
+                    }
+                    else
+                    {
+                        // if not, need to download the whole piece again
+                        pendingIncomingPiecesInfo.Remove(entry);
+                        downloaded -= entry.pieceBuffer.Length;
+                    }
+                }
+            }
+            else
+            {
+                // something went wrong. I recieved a block I didn't asked for. May happen
+                // if my "cancel" went for too long. What should I do?
+                // Create a new entry for it, or just discard it?
+            }
+        }
+
+        private PieceInfoNode AddPendingIncomingPiece(int index)
         {
             long actualPieceSize;
             if (index == torrentContents.NumberOfPieces - 1)
@@ -562,11 +606,8 @@ namespace CourseWork
                 actualPieceSize = torrentContents.PieceSize;
             }
 
-            var newEntry = new PieceInfoNode(index, new byte[actualPieceSize],
+            return new PieceInfoNode(index, new byte[actualPieceSize],
                 new BitArray((int)Math.Ceiling((double)actualPieceSize / blockSize)));
-            // true because its index is gonna be returned and then immediatly requested
-            newEntry.requestedBlocksMap[0] = true;
-            pendingIncomingPiecesInfo.AddLast(newEntry);
         }
 
         private void SendBroadcastHave(int pieceIndex)
@@ -597,7 +638,7 @@ namespace CourseWork
                 {
                     if (connection.outgoingRequests[i] != null)
                     {
-                        // no null-checking because it can't be null
+                        // no null-checking because it can't be null. Or can it?
                         FindRequestsPiece(connection.outgoingRequests[i].Item1).requestedBlocksMap[connection.outgoingRequests[i].Item2 /
                             blockSize] = false;
                         connection.outgoingRequests[i] = null;

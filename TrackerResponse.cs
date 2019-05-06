@@ -19,7 +19,8 @@ namespace CourseWork
 
         public BDictionary response { get; private set; }
 
-        public async Task GetTrackerResponse(Torrent torrent, long downloaded, long totalSize, string peerID, int myPort)
+        public async Task GetTrackerResponse(Torrent torrent, long downloaded, long totalSize, string peerID, int myPort,
+            string eventStr, string trackerID)
         {
             // do something with different trackers
             string baseURI = torrent.Trackers.ElementAt(0).ElementAt(0);
@@ -35,7 +36,8 @@ namespace CourseWork
             string requestURI = baseURI + '?' + "info_hash=" + URIFormedHash +
                 "&peer_id=" + peerID + "&port=" + myPort.ToString() +
                 "&uploaded=" + 0 + "&downloaded=" + downloaded + "&left=" + (totalSize - downloaded) +
-                "&event=started" + "&numwant=50" + "&compact=1" + "&no_peer_id=1";            
+                "&event=started" + "&numwant=50" + "&compact=1" + "&no_peer_id=1" +
+                (eventStr == null ? "" : "&event=" + eventStr) + (trackerID == null ? "" : "&trackerid=" + trackerID);
 
             byte[] response;
             using (var client = new HttpClient())

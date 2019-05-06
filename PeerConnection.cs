@@ -42,6 +42,7 @@ namespace CourseWork
         // do I need peerID here?..
 
         // contains piece number and block offset or null if cell is empty
+        // now no locking is needed
         public Tuple<int, int>[] outgoingRequests;
         public int outgoingRequestsCount;
 
@@ -56,7 +57,13 @@ namespace CourseWork
         public delegate void MessageRecievedHandler(PeerMessage message, PeerConnection connection);
         private MessageRecievedHandler MsgRecieved;
 
-        public PeerConnection(IPEndPoint ep, MessageRecievedHandler handler, int piecesCount, byte[] expectedInfoHash)
+        private Timer activityTimer;
+        private const byte TIMEOUT = 120;
+
+        private DownloadingFile.TimeOutCallBack TimeOutCallback;
+
+        public PeerConnection(IPEndPoint ep, MessageRecievedHandler handler, int piecesCount, byte[] expectedInfoHash,
+            DownloadingFile.TimeOutCallBack TimeOut)
         {
             connectionState = 0;
             connectionState = CONNSTATES.AM_CHOKING | CONNSTATES.PEER_CHOKING;
@@ -71,13 +78,25 @@ namespace CourseWork
             infoHash = expectedInfoHash;
             outgoingRequests = new Tuple<int, int>[maxPendingOutgoingRequestsCount];
             outgoingRequestsCount = 0;
+            TimeOutCallback = TimeOut;
         }
 
+        private void TimerCallback(object info)
+        {
+            TimeOutCallback(this);
+        }
+
+        private void ResetTimer()
+        {
+            activityTimer.Change(TIMEOUT * 1000, TIMEOUT * 1000);
+        }
 
         // !MAKE HANDSHAKING ALGORITHM BETTER!
         public async Task<int> PeerHandshakeAsync(byte[] infoHash, string peerID, CancellationTokenSource cancellationToken)
         {
-            // exceptions (SocketException is caught by the caller)
+            // setting the timer for two minutes
+            activityTimer = new Timer(TimerCallback, null, TIMEOUT * 1000, TIMEOUT * 1000);
+            
             await connectionClient.ConnectAsync(endPoint.Address, endPoint.Port).ConfigureAwait(false);
             if (cancellationToken.IsCancellationRequested)
             {
@@ -94,6 +113,7 @@ namespace CourseWork
             {
                 return -1;
             }
+
             return 0;
         }
 
@@ -215,7 +235,6 @@ namespace CourseWork
 
         public async void StartPeerMessageLoop()
         {
-            // while (!cancelled) HERE!
             while (true)
             {
                 PeerMessage msg;
@@ -230,6 +249,7 @@ namespace CourseWork
                 }
                 if (msg != null)
                 {
+                    ResetTimer();
                     if (msg.messageType == PeerMessageType.unknown)
                     {
                         if (wrongCount <= MAXWRONGMESSAGES)
@@ -252,11 +272,13 @@ namespace CourseWork
                     break;
                 }
             }
+            activityTimer.Dispose();
         }
 
         public void CloseConnection()
         {
             connectionClient.Close();
+            connectionClient.Dispose();
         }
 
         // ALL THE METHODS BELOW MAY BE CALLED FROM ANOTHER THREAD, SO THREAD-SAFETY MUST BE PROVIDED WHERE NEEDED //
@@ -327,23 +349,17 @@ namespace CourseWork
             connectionState &= ~CONNSTATES.AM_INTERESTED;
         }
 
-        /*public void SetAmHave(int index)
-        {
-            peersPieces.Set(index, true);
-        }*/
 
         public void AddIncomingRequest(int piece, int offset)
         {
-            // need lock?
-            lock (IncomingRequests)
-            {
-                IncomingRequests.AddLast(new Tuple<int, int>(piece, offset));
-            }
+            // no locking; only one thread can access this
+            IncomingRequests.AddLast(new Tuple<int, int>(piece, offset));
         }
 
         public void SendPeerMessage(PeerMessage message)
         {
-            connectionClient.GetStream().Write(message.GetMsgContents(), 0, message.GetMsgContents().Length);
+            ResetTimer();
+            connectionClient.GetStream().WriteAsync(message.GetMsgContents(), 0, message.GetMsgContents().Length);
         }
 
         public void AddOutgoingRequest(int pieceIndex, int offset)

@@ -29,6 +29,7 @@ namespace CourseWork
         public const string NOTRACKER = "There was an error while trying to connect to the tracker.\r\n" +
                     "It could happen if you're not connected to the Internet, there was an internal tracker error, or this tracker doesn't exist anymore";
         public const string INVALTRACKRESPMSG = "Tracker's response is invalid! Try again later";
+        public const string TRACKERERRORMSG = "Tracker responded with an error:\r\n";
         public const string NOPEERSMSG = "No peers found, try again later";
         public const string SEARCHINGPEERSMSG = "Searching peers...";
         //private const string CONNTOPEERSMSG = "Connecting to peers...";
@@ -98,7 +99,7 @@ namespace CourseWork
 
         public async void TorrentSubmitted(Torrent torrent, string chosenPath)
         {
-            await AddNewTorrentAsync(torrent, chosenPath);
+            await AddNewTorrentAsync(torrent, chosenPath).ConfigureAwait(false);
         }
 
         private async Task AddNewTorrentAsync(Torrent torrent, string chosenPath)
@@ -195,18 +196,6 @@ namespace CourseWork
 
         }
 
-        /* gets IPv4:Port from 6-bytes array
-         * IPAddress' constructor takes byte array in network byte order,
-         * but IPEndPoint's constructor takes port in native machine byte order
-         */
-        private LinkedListNode<IPEndPoint> GetPeerFromBytes(byte[] peer)
-        {
-            byte[] IPArr = new byte[4];
-            Array.Copy(peer, IPArr, 4);
-            int port = peer[4] * 256 + peer[5];
-            return new LinkedListNode<IPEndPoint>(new IPEndPoint(new IPAddress(IPArr), port));
-        }
-
         public static string GetAppropriateSizeForm(long size)
         {
             const double bytesInGiB = 1073741824;
@@ -230,16 +219,15 @@ namespace CourseWork
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             DownloadingFile.messageHandler.Stop();
-            // TODO: close downloading file (file stream(-s)) and all this stuff
+            // TODO: call STOP on downloading file
         }
 
         // TODO: some kind of race condition when file is downloaded.. sometimes progress bar doesn't update the last one
 
-        private void StopButton_Click(object sender, EventArgs e)
+        private async void StopButton_Click(object sender, EventArgs e)
         {
-            // TODO: add streams flushing on stop
             // find out what file has been selected, then call Stop method
-            filesList.ElementAt(0).Stop();
+            await filesList.ElementAt(0).Stop();
         }
     }
 }

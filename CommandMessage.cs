@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CourseWork
 {
-    public enum ControlMessageType { SendKeepAlive, SendCancel, CloseConnection };
+    public enum ControlMessageType { SendKeepAlive, SendCancel, CloseConnection, SendPiece };
     public class CommandMessage : Message
     {
         public ControlMessageType messageType;

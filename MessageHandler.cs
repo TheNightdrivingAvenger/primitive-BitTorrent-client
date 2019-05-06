@@ -96,7 +96,7 @@ namespace CourseWork
                         }
                         break;
                     case ControlMessageType.CloseConnection:
-                        // TODO: what if here I try to close an already closed connection?
+                        // what if here I try to close an already closed connection?
                         // for example somewhere in the queue there's a message "Close connection",
                         // but it fails to send something and is closed earlier
                         try
@@ -106,7 +106,7 @@ namespace CourseWork
                         }
                         catch (ObjectDisposedException)
                         {
-                            // do nothing; it has been closed somewhere else
+                            // then do nothing; it has been closed somewhere else
                         }
                         break;
                 }
@@ -117,7 +117,7 @@ namespace CourseWork
                 switch (message.messageType)
                 {
                     case PeerMessageType.keepAlive:
-                        // TODO: reset the activity timer
+
                         return; // return because I don't need to call "ConnectionStateChanged"
                                 // maybe if I have some pending requests on this connection and do not receive them, I could send "cancel"
                                 // and then ask for blocks somewhere else
@@ -147,7 +147,7 @@ namespace CourseWork
                                 message.targetFile.RemoveConnection(message.targetConnection);
                             }
                         }
-                        break;
+                        return;
                     case PeerMessageType.have:
                         message.targetConnection.SetPeerHave(message.pieceIndex);
                         break;
@@ -155,19 +155,15 @@ namespace CourseWork
                         message.targetConnection.SetBitField(message);
                         break;
                     case PeerMessageType.request:
-                        // add pending !INCOMING! piece request to FileWorker's list! (if it's not there yet)
-                        break;
+                        // add pending !INCOMING! piece request to list! (if it's not there yet)
+                        // check boundaries here before adding to the queue
+                        return;
                     case PeerMessageType.piece:
-                        // CHECK IF PIECE (BLOCK) SIZE IS CORRECT! (<= 2^14)
-                        // TODO: move this check to FileWorker/DownloadingFile
-                        if (message.GetMsgContents().Length - message.rawBytesOffset <= 16384)
-                        {
-                            byte[] block = new byte[message.GetMsgContents().Length - message.rawBytesOffset];
-                            Array.Copy(message.GetMsgContents(), message.rawBytesOffset, block, 0, block.Length);
-                            // for now it sends "HAVE" messages by itself, but for consistency it could be better
-                            // if this method would do this, because it controls all other behavior of connection
-                            message.targetFile.AddBlock(message.pieceIndex, message.pieceOffset, block);
-                        }
+                        byte[] block = new byte[message.GetMsgContents().Length - message.rawBytesOffset];
+                        Array.Copy(message.GetMsgContents(), message.rawBytesOffset, block, 0, block.Length);
+                        // for now it sends "HAVE" messages by itself, but for consistency it could be better
+                        // if this method would do this, because it controls all other behavior of connections
+                        message.targetFile.AddBlock(message.pieceIndex, message.pieceOffset, block);
                         try
                         {
                             message.targetConnection.RemoveOutgoingRequest(message.pieceIndex, message.pieceOffset);
@@ -179,7 +175,7 @@ namespace CourseWork
                         break;
                     case PeerMessageType.cancel:
                         // TODO: remove from pending incoming requests (whatever this means now); probly no need to call ConnectionStateChanged
-                        break;
+                        return;
                     case PeerMessageType.port:
                         return;
                 }
@@ -253,6 +249,8 @@ namespace CourseWork
                     {
                         try
                         {
+                            // I can actually use await SendPeerMessage above, and here .Result, but...
+                            message.targetConnection.AddOutgoingRequest(nextRequest.Item1, nextRequest.Item2);
                             message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.request, nextRequest.Item1,
                                 nextRequest.Item2, nextRequest.Item3));
                         }
@@ -279,6 +277,7 @@ namespace CourseWork
         // System.InvalidOperationException: 'Коллекция была помечена, как завершенная, с учетом добавлений.'
         // TODO: can happen if I've closed the main form (and stopped the MessageHandler),
         // but connections are still active and try to add messages to the queue
+        // SO I need to close all the connections before Stopping the Pump
         public void AddTask(Message newMessage)
         {
             messageQueue.Add(newMessage);
