@@ -46,6 +46,7 @@
             this.DownloadPath = new System.Windows.Forms.TextBox();
             this.DownloadPathDialog = new System.Windows.Forms.FolderBrowserDialog();
             this.panel1 = new System.Windows.Forms.Panel();
+            this.StartDownloading = new System.Windows.Forms.CheckBox();
             this.ContentsBox.SuspendLayout();
             this.PathBox.SuspendLayout();
             this.panel1.SuspendLayout();
@@ -166,6 +167,7 @@
             // 
             // PathBox
             // 
+            this.PathBox.Controls.Add(this.StartDownloading);
             this.PathBox.Controls.Add(this.CreateSubFolder);
             this.PathBox.Controls.Add(this.BrowseFolderButton);
             this.PathBox.Controls.Add(this.label1);
@@ -229,6 +231,16 @@
             this.panel1.Size = new System.Drawing.Size(664, 61);
             this.panel1.TabIndex = 2;
             // 
+            // StartDownloading
+            // 
+            this.StartDownloading.AutoSize = true;
+            this.StartDownloading.Location = new System.Drawing.Point(13, 99);
+            this.StartDownloading.Name = "StartDownloading";
+            this.StartDownloading.Size = new System.Drawing.Size(143, 21);
+            this.StartDownloading.TabIndex = 3;
+            this.StartDownloading.Text = "Start downloading";
+            this.StartDownloading.UseVisualStyleBackColor = true;
+            // 
             // TorrentInfo
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
@@ -269,5 +281,6 @@
         private System.Windows.Forms.FolderBrowserDialog DownloadPathDialog;
         private System.Windows.Forms.CheckBox CreateSubFolder;
         private System.Windows.Forms.Panel panel1;
+        private System.Windows.Forms.CheckBox StartDownloading;
     }
 }

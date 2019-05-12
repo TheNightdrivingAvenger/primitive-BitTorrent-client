@@ -31,6 +31,7 @@
             this.FilesArea = new System.Windows.Forms.ListView();
             this.FileName = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.FileSize = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.FileProgress = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.FileState = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.SeedersLeechersRatio = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.menuStrip1 = new System.Windows.Forms.MenuStrip();
@@ -42,6 +43,8 @@
             this.StartButton = new System.Windows.Forms.ToolStripButton();
             this.StopButton = new System.Windows.Forms.ToolStripButton();
             this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
+            this.RehashButton = new System.Windows.Forms.ToolStripButton();
+            this.toolStripSeparator2 = new System.Windows.Forms.ToolStripSeparator();
             this.RemoveButton = new System.Windows.Forms.ToolStripButton();
             this.DeleteButton = new System.Windows.Forms.ToolStripButton();
             this.menuStrip1.SuspendLayout();
@@ -53,6 +56,7 @@
             this.FilesArea.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
             this.FileName,
             this.FileSize,
+            this.FileProgress,
             this.FileState,
             this.SeedersLeechersRatio});
             this.FilesArea.Dock = System.Windows.Forms.DockStyle.Bottom;
@@ -64,6 +68,7 @@
             this.FilesArea.TabIndex = 0;
             this.FilesArea.UseCompatibleStateImageBehavior = false;
             this.FilesArea.View = System.Windows.Forms.View.Details;
+            this.FilesArea.ItemSelectionChanged += new System.Windows.Forms.ListViewItemSelectionChangedEventHandler(this.FilesArea_ItemSelectionChanged);
             // 
             // FileName
             // 
@@ -73,12 +78,17 @@
             // FileSize
             // 
             this.FileSize.Text = "Size";
-            this.FileSize.Width = 85;
+            this.FileSize.Width = 67;
+            // 
+            // FileProgress
+            // 
+            this.FileProgress.Text = "Completed";
+            this.FileProgress.Width = 80;
             // 
             // FileState
             // 
             this.FileState.Text = "State";
-            this.FileState.Width = 574;
+            this.FileState.Width = 514;
             // 
             // SeedersLeechersRatio
             // 
@@ -131,6 +141,8 @@
             this.StartButton,
             this.StopButton,
             this.toolStripSeparator1,
+            this.RehashButton,
+            this.toolStripSeparator2,
             this.RemoveButton,
             this.DeleteButton});
             this.mainToolStrip.Location = new System.Drawing.Point(0, 28);
@@ -142,15 +154,18 @@
             // StartButton
             // 
             this.StartButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.StartButton.Enabled = false;
             this.StartButton.Image = global::CourseWork.Properties.Resources.play_arrow;
             this.StartButton.ImageTransparentColor = System.Drawing.Color.Magenta;
             this.StartButton.Name = "StartButton";
             this.StartButton.Size = new System.Drawing.Size(24, 24);
             this.StartButton.ToolTipText = "Start downloading";
+            this.StartButton.Click += new System.EventHandler(this.StartButton_Click);
             // 
             // StopButton
             // 
             this.StopButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.StopButton.Enabled = false;
             this.StopButton.Image = global::CourseWork.Properties.Resources.stop;
             this.StopButton.ImageTransparentColor = System.Drawing.Color.Magenta;
             this.StopButton.Name = "StopButton";
@@ -164,23 +179,43 @@
             this.toolStripSeparator1.Name = "toolStripSeparator1";
             this.toolStripSeparator1.Size = new System.Drawing.Size(6, 27);
             // 
+            // RehashButton
+            // 
+            this.RehashButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.RehashButton.Enabled = false;
+            this.RehashButton.Image = global::CourseWork.Properties.Resources.rehash;
+            this.RehashButton.ImageTransparentColor = System.Drawing.Color.Magenta;
+            this.RehashButton.Name = "RehashButton";
+            this.RehashButton.Size = new System.Drawing.Size(24, 24);
+            this.RehashButton.ToolTipText = "Rehash downloaded files";
+            this.RehashButton.Click += new System.EventHandler(this.RehashButton_Click);
+            // 
+            // toolStripSeparator2
+            // 
+            this.toolStripSeparator2.Name = "toolStripSeparator2";
+            this.toolStripSeparator2.Size = new System.Drawing.Size(6, 27);
+            // 
             // RemoveButton
             // 
             this.RemoveButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.RemoveButton.Enabled = false;
             this.RemoveButton.Image = global::CourseWork.Properties.Resources.cancel;
             this.RemoveButton.ImageTransparentColor = System.Drawing.Color.Magenta;
             this.RemoveButton.Name = "RemoveButton";
             this.RemoveButton.Size = new System.Drawing.Size(24, 24);
             this.RemoveButton.ToolTipText = "Remove from program, keep downloaded files";
+            this.RemoveButton.Click += new System.EventHandler(this.RemoveButton_Click);
             // 
             // DeleteButton
             // 
             this.DeleteButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.DeleteButton.Enabled = false;
             this.DeleteButton.Image = global::CourseWork.Properties.Resources.delete;
             this.DeleteButton.ImageTransparentColor = System.Drawing.Color.Magenta;
             this.DeleteButton.Name = "DeleteButton";
             this.DeleteButton.Size = new System.Drawing.Size(24, 24);
             this.DeleteButton.ToolTipText = "Delete downloaded files and remove from program";
+            this.DeleteButton.Click += new System.EventHandler(this.DeleteButton_Click);
             // 
             // MainForm
             // 
@@ -194,6 +229,7 @@
             this.Name = "MainForm";
             this.Text = "MainWindow";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MainForm_FormClosing);
+            this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.MainForm_FormClosed);
             this.Shown += new System.EventHandler(this.MainForm_Shown);
             this.menuStrip1.ResumeLayout(false);
             this.menuStrip1.PerformLayout();
@@ -222,6 +258,9 @@
         private System.Windows.Forms.ToolStripButton DeleteButton;
         private System.Windows.Forms.ToolStripMenuItem createANewTorrentToolStripMenuItem;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
+        private System.Windows.Forms.ColumnHeader FileProgress;
+        private System.Windows.Forms.ToolStripButton RehashButton;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator2;
     }
 }
 

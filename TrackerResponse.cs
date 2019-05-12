@@ -19,11 +19,11 @@ namespace CourseWork
 
         public BDictionary response { get; private set; }
 
-        public async Task GetTrackerResponse(Torrent torrent, long downloaded, long totalSize, string peerID, int myPort,
-            string eventStr, string trackerID)
+        public async Task GetTrackerResponse(DownloadingFile downloadingFile, string peerID, int myPort,
+            string eventStr, int numWant)
         {
             // do something with different trackers
-            string baseURI = torrent.Trackers.ElementAt(0).ElementAt(0);
+            string baseURI = downloadingFile.torrentContents.Trackers.ElementAt(0).ElementAt(0);
             //foreach (var URIList in torrent.Trackers)
             //{
             //    foreach (var URI in URIList)
@@ -31,13 +31,14 @@ namespace CourseWork
             //        //getting tracker's URIs
             //    }
             //}
-            string URIFormedHash = URIEncode(torrent.OriginalInfoHashBytes);
+            string URIFormedHash = URIEncode(downloadingFile.torrentContents.OriginalInfoHashBytes);
 
             string requestURI = baseURI + '?' + "info_hash=" + URIFormedHash +
                 "&peer_id=" + peerID + "&port=" + myPort.ToString() +
-                "&uploaded=" + 0 + "&downloaded=" + downloaded + "&left=" + (totalSize - downloaded) +
-                "&event=started" + "&numwant=50" + "&compact=1" + "&no_peer_id=1" +
-                (eventStr == null ? "" : "&event=" + eventStr) + (trackerID == null ? "" : "&trackerid=" + trackerID);
+                "&uploaded=" + 0 + "&downloaded=" + downloadingFile.downloaded + "&left=" + (downloadingFile.totalSize -
+                downloadingFile.downloaded) + "&numwant=" + numWant +
+                "&compact=1" + "&no_peer_id=1" + (eventStr == null ? "" : "&event=" + eventStr) +
+                (downloadingFile.trackerID == null ? "" : "&trackerid=" + downloadingFile.trackerID);
 
             byte[] response;
             using (var client = new HttpClient())

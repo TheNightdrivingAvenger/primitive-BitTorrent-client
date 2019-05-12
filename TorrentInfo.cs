@@ -46,7 +46,7 @@ namespace CourseWork
         {
             //FileWorker.AddNewTorrentAsync();
             // add it to GUI, then wait
-            ((MainForm)Owner).TorrentSubmitted(pendingTorrent, chosenPath);
+            ((MainForm)Owner).TorrentSubmitted(pendingTorrent, chosenPath, StartDownloading.Checked);
             this.Close();
         }
 

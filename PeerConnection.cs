@@ -28,6 +28,8 @@ namespace CourseWork
     // receiving is performed from the main thread; then received message is sent to another (MessageHandler) thread
     // for processing. All subsequent actions (setting logical connection state and sending messages to peers)
     // are performed from this MessageHandler thread
+
+    // TODO: implement piece sharing
     public class PeerConnection
     {
         private const int MAXWRONGMESSAGES = 10;
@@ -41,10 +43,12 @@ namespace CourseWork
         private byte[] infoHash;
         // do I need peerID here?..
 
+        public bool bitfieldSent;
+
         // contains piece number and block offset or null if cell is empty
         // now no locking is needed
         public Tuple<int, int>[] outgoingRequests;
-        public int outgoingRequestsCount;
+        public int outgoingRequestsCount { get; private set; }
 
         // need sync?
         // first int = piece number; second int = piece's block number
@@ -69,6 +73,9 @@ namespace CourseWork
             connectionState = CONNSTATES.AM_CHOKING | CONNSTATES.PEER_CHOKING;
             connectionClient = new TcpClient();
             peersPieces = new BitArray(piecesCount);
+            bitfieldSent = false;
+            // copy it here to be independent from list entry?
+            //endPoint = new IPEndPoint(ep.Address, ep.Port);
             endPoint = ep;
             MsgRecieved = handler;
             wrongCount = 0;
@@ -93,10 +100,7 @@ namespace CourseWork
 
         // !MAKE HANDSHAKING ALGORITHM BETTER!
         public async Task<int> PeerHandshakeAsync(byte[] infoHash, string peerID, CancellationTokenSource cancellationToken)
-        {
-            // setting the timer for two minutes
-            activityTimer = new Timer(TimerCallback, null, TIMEOUT * 1000, TIMEOUT * 1000);
-            
+        {            
             await connectionClient.ConnectAsync(endPoint.Address, endPoint.Port).ConfigureAwait(false);
             if (cancellationToken.IsCancellationRequested)
             {
@@ -104,24 +108,25 @@ namespace CourseWork
             }
             var handshakeMessage = new PeerMessage(infoHash, peerID);
             await connectionClient.GetStream().WriteAsync(handshakeMessage.GetMsgContents(), 0, 
-                handshakeMessage.GetMsgContents().Length).ConfigureAwait(false);
+                handshakeMessage.GetMsgContents().Length, cancellationToken.Token).ConfigureAwait(false);
 
-            var message = await RecieveHandshakeMessageAsync().ConfigureAwait(false);
+            var message = await RecieveHandshakeMessageAsync(cancellationToken).ConfigureAwait(false);
 
             //add checking if hash in the response is valid
             if (message == null || message.messageType != PeerMessageType.handshake)
             {
                 return -1;
             }
-
+            // setting the timer for two minutes
+            activityTimer = new Timer(TimerCallback, null, TIMEOUT * 1000, TIMEOUT * 1000);
             return 0;
         }
 
-        private async Task<PeerMessage> RecieveHandshakeMessageAsync()
+        private async Task<PeerMessage> RecieveHandshakeMessageAsync(CancellationTokenSource cancellationToken)
         {
             byte[] buf = new byte[PeerMessage.pstrLenSpace + PeerMessage.pstr.Length + PeerMessage.reservedLen + 20 + 20];
             // 5000 -- cancel receiving handshake if peer hasn't responded in 5 seconds
-            int result = await GetAndDecodeHandshakeAsync(buf, 5000);
+            int result = await GetAndDecodeHandshakeAsync(buf, 5000, cancellationToken);
             if (result != 0)
             {
                 return null;
@@ -135,7 +140,7 @@ namespace CourseWork
         // or peer is faulting. Other (subsequent) messages may be large, and connection
         // after handshake is believed to be stable, so if something happens we wait until
         // some TCP error or something else, which will lead to connection closing
-        public async Task<int> GetAndDecodeHandshakeAsync(byte[] buf, int delay)
+        public async Task<int> GetAndDecodeHandshakeAsync(byte[] buf, int delay, CancellationTokenSource cancellationToken)
         {
             int readres = 0;
             int read = 0;
@@ -150,7 +155,7 @@ namespace CourseWork
                     readres = await connectionClient.GetStream().ReadAsync(buf, bufOffset,
                         buf.Length - read, handshakeCancellationTokenSource.Token);
 
-                    if (readres == 0)
+                    if (cancellationToken.IsCancellationRequested || readres == 0)
                     {
                         return 1;
                     }
@@ -233,6 +238,7 @@ namespace CourseWork
             return result;
         }
 
+        // alternative realisation: separate thread
         public async void StartPeerMessageLoop()
         {
             while (true)
@@ -311,7 +317,6 @@ namespace CourseWork
 
         public void SetBitField(PeerMessage message)
         {
-            //int startOffset = PeerMessage.msgLenSpace + PeerMessage.msgTypeSpace;
             for (int i = message.rawBytesOffset; i < message.GetMsgContents().Length; i++)
             {
                 // NO LOCKING because only MessageHandler's thread uses these values

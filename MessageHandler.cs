@@ -13,9 +13,12 @@ namespace CourseWork
         // when we've got nothing to do, we go and check downloading files
         // (only active right now I guess) and their connections to see if
         // we can send something to peers on these connections (for example, pieces)
+        // TODO: consider removing if algorithm changes
         private LinkedList<DownloadingFile> downloadingFiles;
 
         public bool isStarted { get; private set; }
+        public bool isStopped { get; private set; }
+        public bool isCompleted { get; private set; }
         private Thread workerThread;
         private BlockingCollection<Message> messageQueue;
 
@@ -23,9 +26,11 @@ namespace CourseWork
         {
             //By default, the storage for a System.Collections.Concurrent.BlockingCollection<T> 
             //is System.Collections.Concurrent.ConcurrentQueue<T>.
-            // TODO: why exactly maxQueueLength? Idk, OK for now
+            // why exactly maxQueueLength? Idk, OK for now
             messageQueue = new BlockingCollection<Message>(maxQueueLength);
             isStarted = false;
+            isStopped = false;
+            isCompleted = false;
             this.downloadingFiles = downloadingFiles;
         }
 
@@ -39,7 +44,8 @@ namespace CourseWork
             }
             else
             {
-                throw new InvalidOperationException("This instance of MessageHandler has been marked as finished OR is already started");
+                throw new InvalidOperationException("This instance of MessageHandler has been marked " +
+                    "as finished OR is already started");
             }
         }
 
@@ -61,38 +67,43 @@ namespace CourseWork
                 }
                 Handler(msg);
             }
+            isCompleted = true;
         }
 
+        // probably a not bad solution for using "await" is first collect the data
+        // from data structures and copy it here if needed, then just call (maybe in cycle) "await Send"
+        // with all this data; so no data-accessing after awaits, no sync needed
         private void Handler(Message msg)
         {
-            // TODO: what if I recieve handshake? I mean, if someone's trying to connect to me and I'm not the initiator
             if (msg is CommandMessage)
             {
                 var message = (CommandMessage)msg;
                 // perform needed connection controlling and management
                 switch (message.messageType)
                 {
-                    case ControlMessageType.SendKeepAlive:
+                    case ControlMessageType.SendInner:
                         try
                         {
-                            message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.keepAlive));
+                            if (message.messageToSend.messageType == PeerMessageType.have)
+                            {
+                                // we haven't yet sent the bitfield, so can't send any other messages
+                                // add it to the end of the queue
+                                if (!message.messageToSend.targetConnection.bitfieldSent)
+                                {
+                                    AddTask(message);
+                                    break;
+                                }
+                            }
+                            message.messageToSend.targetConnection.SendPeerMessage(message.messageToSend);
+                            if (message.messageToSend.messageType == PeerMessageType.bitfield)
+                            {
+                                message.messageToSend.targetConnection.bitfieldSent = true;
+                            }
                         }
                         catch
                         {
-                            message.targetConnection.CloseConnection();
-                            message.targetFile.RemoveConnection(message.targetConnection);
-                        }
-                        break;
-                    case ControlMessageType.SendCancel:
-                        try
-                        {
-                            message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.cancel, message.pieceIndex,
-                                message.pieceOffset, message.blockSize));
-                        }
-                        catch
-                        {
-                            message.targetConnection.CloseConnection();
-                            message.targetFile.RemoveConnection(message.targetConnection);
+                            message.messageToSend.targetConnection.CloseConnection();
+                            message.messageToSend.targetFile.RemoveConnection(message.messageToSend.targetConnection);
                         }
                         break;
                     case ControlMessageType.CloseConnection:
@@ -106,7 +117,7 @@ namespace CourseWork
                         }
                         catch (ObjectDisposedException)
                         {
-                            // then do nothing; it has been closed somewhere else
+                            // then do nothing; it has been closed somewhere else before
                         }
                         break;
                 }
@@ -119,7 +130,8 @@ namespace CourseWork
                     case PeerMessageType.keepAlive:
 
                         return; // return because I don't need to call "ConnectionStateChanged"
-                                // maybe if I have some pending requests on this connection and do not receive them, I could send "cancel"
+                                // maybe if I have some pending requests on this connection and do not receive them,
+                                // I could send "cancel"
                                 // and then ask for blocks somewhere else
                     case PeerMessageType.choke:
                         message.targetConnection.SetPeerChoking();
@@ -131,7 +143,7 @@ namespace CourseWork
                     case PeerMessageType.interested:
                         message.targetConnection.SetPeerInterested();
                         // TODO: choking-unchoking algorithms and stuff
-                        break;
+                        return;
                     case PeerMessageType.notInterested:
                         message.targetConnection.SetPeerNotInterested();
                         if (!message.targetConnection.connectionState.HasFlag(CONNSTATES.AM_CHOKING))
@@ -161,8 +173,6 @@ namespace CourseWork
                     case PeerMessageType.piece:
                         byte[] block = new byte[message.GetMsgContents().Length - message.rawBytesOffset];
                         Array.Copy(message.GetMsgContents(), message.rawBytesOffset, block, 0, block.Length);
-                        // for now it sends "HAVE" messages by itself, but for consistency it could be better
-                        // if this method would do this, because it controls all other behavior of connections
                         message.targetFile.AddBlock(message.pieceIndex, message.pieceOffset, block);
                         try
                         {
@@ -174,7 +184,7 @@ namespace CourseWork
                         }
                         break;
                     case PeerMessageType.cancel:
-                        // TODO: remove from pending incoming requests (whatever this means now); probly no need to call ConnectionStateChanged
+                        // TODO: remove from pending incoming requests (whatever this means now);
                         return;
                     case PeerMessageType.port:
                         return;
@@ -184,6 +194,9 @@ namespace CourseWork
 
         }
 
+        // probably a not bad solution for using "await" is first collect the data
+        // from data structures and copy it here if needed, then just call (maybe in cycle) "await Send"
+        // with all this data; so no data-accessing after awaits, no sync needed
         private void ConnectionStateChanged(PeerMessage message)
         {
             bool interestingPieces = message.targetFile.PeerHasInterestingPieces(message.targetConnection);
@@ -240,6 +253,9 @@ namespace CourseWork
                 else if (interestingPieces && 
                     message.targetConnection.outgoingRequestsCount < message.targetConnection.maxPendingOutgoingRequestsCount)
                 {
+                    // optimization thoughts: search interesting pieces not one-by-one, but all possible from one 
+                    // list traversal; return them here, send requests for all at once;
+                    // start finding new not when event 1 slot for request is available, but when, for example, 1/2 of slots
                     // TODO: try to optimize this
                     Tuple<int, int, int> nextRequest = message.targetFile.FindNextRequest(message.targetConnection);
                     // <= because last ++ (if nextRequest is not null) occured in FindNextRequest, so we need to send
@@ -274,10 +290,6 @@ namespace CourseWork
             }
         }
 
-        // System.InvalidOperationException: 'Коллекция была помечена, как завершенная, с учетом добавлений.'
-        // TODO: can happen if I've closed the main form (and stopped the MessageHandler),
-        // but connections are still active and try to add messages to the queue
-        // SO I need to close all the connections before Stopping the Pump
         public void AddTask(Message newMessage)
         {
             messageQueue.Add(newMessage);
@@ -285,6 +297,10 @@ namespace CourseWork
 
         public void Stop()
         {
+            // first set isStopped, so no more threads can add to the collection
+            // if this method is interrupted by task-switching between calling
+            // CompleteAdding and setting isStopped
+            isStopped = true;
             messageQueue.CompleteAdding();
         }
     }

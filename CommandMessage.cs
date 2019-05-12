@@ -6,24 +6,24 @@ using System.Threading.Tasks;
 
 namespace CourseWork
 {
-    public enum ControlMessageType { SendKeepAlive, SendCancel, CloseConnection, SendPiece };
+    public enum ControlMessageType { CloseConnection, SendInner };
     public class CommandMessage : Message
     {
         public ControlMessageType messageType;
-        public int pieceIndex;
-        public int pieceOffset;
-        public int blockSize;
 
-        public CommandMessage(ControlMessageType messageType, DownloadingFile file, PeerConnection connection,
-            int pieceIndex, int pieceOffset, int blockSize)
+        public PeerMessage messageToSend;
+
+        public CommandMessage(ControlMessageType messageType, PeerMessage messageToSend)
         {
             this.messageType = messageType;
-            this.pieceIndex = pieceIndex;
-            this.pieceOffset = pieceOffset;
-            this.blockSize = blockSize;
+            this.messageToSend = messageToSend;
+        }
 
-            base.targetFile = file;
-            base.targetConnection = connection;
+        public CommandMessage(ControlMessageType messageType,
+            DownloadingFile targetFile, PeerConnection targetConnection)
+        {
+            base.targetConnection = targetConnection;
+            base.targetFile = targetFile;
         }
     }
 }

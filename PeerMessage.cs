@@ -131,10 +131,24 @@ namespace CourseWork
         public PeerMessage(BitArray bitfield)
         {
             messageType = PeerMessageType.bitfield;
-            bitfield.CopyTo(new byte[(int)Math.Ceiling((double)bitfield.Length / 8)], 0);
-            msgContents = new byte[msgLenSpace + msgTypeSpace + bitfield.Length];
-            // TODO: Implement constructor for "bitfield" message
-            // some WTFs with BitField.Copy method; later
+            msgContents = new byte[msgLenSpace + msgTypeSpace + (int)Math.Ceiling((double)bitfield.Count / 8)];
+            rawBytesOffset = msgLenSpace + msgTypeSpace;
+            Array.Copy(PeerConnection.HTONNTOH(BitConverter.GetBytes(msgContents.Length - msgLenSpace)), msgContents, msgLenSpace);
+            msgContents[msgLenSpace] = (byte)messageType;
+
+            int j = 0;
+            for (int i = rawBytesOffset; i < msgContents.Length; i++)
+            {
+                for (int bit = 7; bit >= 0; bit--)
+                {
+                    if (j >= bitfield.Count)
+                    {
+                        break;
+                    }
+                    msgContents[i] |= (byte)(Convert.ToByte(bitfield[j]) << bit);
+                    j++;
+                }
+            }
         }
 
         /// <summary>
