@@ -189,7 +189,11 @@ namespace CourseWork
                     case PeerMessageType.port:
                         return;
                 }
-                ConnectionStateChanged(message);
+                if (message.targetFile.state == DownloadState.downloading)
+                {
+                    // stopping means we shouldn't ask any more pieces
+                    ConnectionStateChanged(message);
+                }
             }
 
         }

@@ -125,8 +125,8 @@ namespace CourseWork
         private async Task<PeerMessage> RecieveHandshakeMessageAsync(CancellationTokenSource cancellationToken)
         {
             byte[] buf = new byte[PeerMessage.pstrLenSpace + PeerMessage.pstr.Length + PeerMessage.reservedLen + 20 + 20];
-            // 5000 -- cancel receiving handshake if peer hasn't responded in 5 seconds
-            int result = await GetAndDecodeHandshakeAsync(buf, 5000, cancellationToken);
+            // 3000 -- cancel receiving handshake if peer hasn't responded in 3 seconds
+            int result = await GetAndDecodeHandshakeAsync(buf, 3000, cancellationToken);
             if (result != 0)
             {
                 return null;
@@ -364,7 +364,7 @@ namespace CourseWork
         public void SendPeerMessage(PeerMessage message)
         {
             ResetTimer();
-            connectionClient.GetStream().WriteAsync(message.GetMsgContents(), 0, message.GetMsgContents().Length);
+            connectionClient.GetStream().Write(message.GetMsgContents(), 0, message.GetMsgContents().Length);
         }
 
         public void AddOutgoingRequest(int pieceIndex, int offset)

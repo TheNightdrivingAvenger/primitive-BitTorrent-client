@@ -50,7 +50,6 @@ namespace CourseWork
                 // бывают исключения при отправке запроса!.. Inner WebException -- не получиолсь разрешить DNS
                 response = await client.GetByteArrayAsync(requestURI).ConfigureAwait(false); ;
             }
-            // watch out for duplicate keys (will throw an exception) here (various things can happen...)
             var parser = new BencodeParser();
             this.response = parser.Parse<BDictionary>(response);
         }

@@ -50,6 +50,12 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CommandMessage.cs" />
+    <Compile Include="CreateTorrent.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="CreateTorrent.Designer.cs">
+      <DependentUpon>CreateTorrent.cs</DependentUpon>
+    </Compile>
     <Compile Include="DownloadingFile.cs" />
     <Compile Include="InvalidTrackerResponseException.cs" />
     <Compile Include="Message.cs" />
@@ -73,6 +79,9 @@
       <DependentUpon>TorrentInfo.cs</DependentUpon>
     </Compile>
     <Compile Include="TrackerResponse.cs" />
+    <EmbeddedResource Include="CreateTorrent.resx">
+      <DependentUpon>CreateTorrent.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="MainForm.resx">
       <DependentUpon>MainForm.cs</DependentUpon>
     </EmbeddedResource>

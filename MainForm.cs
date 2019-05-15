@@ -1,10 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -12,9 +8,6 @@ using BencodeNET.Parsing;
 using BencodeNET.Torrents;
 using BencodeNET.Objects;
 using BencodeNET.Exceptions;
-using System.Net;
-using System.Net.Sockets;
-using CourseWork;
 using System.IO;
 
 namespace CourseWork
@@ -33,8 +26,10 @@ namespace CourseWork
         public const string TRACKERERRORMSG = "Tracker responded with an error:\r\n";
         public const string NOPEERSMSG = "No peers found, try again later";
         public const string SEARCHINGPEERSMSG = "Searching peers...";
-        //private const string CONNTOPEERSMSG = "Connecting to peers...";
+        public const string SHARINGMSG = "Sharing";
+        public const string CHECKINGMSG = "Checking hashes...";
         public const string DOWNLOADINGMSG = "Downloading...";
+        public const string STOPPINGMSG = "Stopping...";
         public const string STOPPEDMSG = "Stopped";
 
         private LinkedList<DownloadingFile> filesList;
@@ -128,7 +123,8 @@ namespace CourseWork
                             }
                             catch
                             {
-                                // session file corrupted, show it! Name is in fileNames[i]
+                                MessageBox.Show("This session file is corrupted and cannot be read:\r\n" +
+                                    fileNames[i], "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             }
                         }
                     }
@@ -204,6 +200,7 @@ namespace CourseWork
                 else
                 {
                     UpdateProgress(downloadingFile);
+                    UpdateStatus(downloadingFile, STOPPEDMSG);
                 }
                 try
                 {
@@ -221,19 +218,57 @@ namespace CourseWork
         {
             if (OpenFileDia.ShowDialog() == DialogResult.OK)
             {
-                Torrent newTorrent = OpenAndParse(OpenFileDia.FileName);
-                if (newTorrent != null)
+                if (Path.GetExtension(OpenFileDia.FileName) == ".torrent")
                 {
-                    var InfoWindow = new TorrentInfo(this, newTorrent);
-                    InfoWindow.Show();
+                    Torrent newTorrent = OpenAndParse(OpenFileDia.FileName);
+                    if (newTorrent != null)
+                    {
+                        var InfoWindow = new TorrentInfo(this, newTorrent);
+                        InfoWindow.Show();
+                    }
+                }
+                else if (Path.GetExtension(OpenFileDia.FileName) == ".session")
+                {
+                    try
+                    {
+                        var dictionary = standardParser.Parse<BDictionary>(File.ReadAllBytes(OpenFileDia.FileName));
+                        string rootSessionPath = Path.GetDirectoryName(OpenFileDia.FileName) +
+                            Path.DirectorySeparatorChar;
+                        Torrent newTorrent = OpenAndParse(rootSessionPath + dictionary.First().Key.ToString());
+                        if (newTorrent != null)
+                        {
+                            ParseSession(dictionary, newTorrent, rootSessionPath);
+                            AddNewViewListEntry(filesList.Last.Value);
+                            if (filesList.Last.Value.filesCorrupted)
+                            {
+                                UpdateStatus(filesList.Last.Value, FILESCORRUPTEDMSG);
+                            }
+                            else
+                            {
+                                UpdateProgress(filesList.Last.Value);
+                            }
+                            try
+                            {
+                                filesList.Last.Value.AddToMainSession();
+                            }
+                            catch
+                            {
+                                // cannot add the file to the main session
+                                // (disk space or something, just cannot write to the file)
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        MessageBox.Show("This session file cannot be accessed or is corrupted and cannot be read:\r\n" +
+                            OpenFileDia.FileName, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             }
         }
 
         public async void TorrentSubmitted(Torrent torrent, string chosenPath, bool start)
         {
-            // add copying file to program's location (so we can keep track of opened torrents
-            // AND be independent from original file)
             DownloadingFile newSharedFile;
             try
             {
@@ -241,7 +276,8 @@ namespace CourseWork
             }
             catch // make catch more specific?
             {
-                // something went wrong, tell the user
+                MessageBox.Show("Could not create some or all of the files.\r\nMake sure the directory is readable" +
+                    "and writeable, and that you have enough free disk space.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
             AddNewViewListEntry(newSharedFile);
@@ -267,26 +303,41 @@ namespace CourseWork
             newSharedFile.AddToMainSession();
             if (start && !fileIsDownloading)
             {
-                StartButton.Enabled = false;
+                fileIsDownloading = true;
                 await newSharedFile.StartAsync().ConfigureAwait(false);
             }
         }
 
         public void PeerConnectedDisconnectedEvent(DownloadingFile sharedFile, int totalPeers)
         {
-            string curMsg;
+            string curMsg = "";
             if (totalPeers > 0)
             {
-                curMsg = DOWNLOADINGMSG;
-            }
-            else if (totalPeers == 0 && sharedFile.state != DownloadState.stopped)
-            {
-                curMsg = SEARCHINGPEERSMSG;
+                if (sharedFile.state == DownloadState.completed)
+                {
+                    curMsg = SHARINGMSG;
+                }
+                else if (sharedFile.state == DownloadState.downloading)
+                {
+                    curMsg = DOWNLOADINGMSG;
+                }
+                else if (sharedFile.state == DownloadState.stopped)
+                {
+                    curMsg = STOPPEDMSG;
+                }
             }
             else
             {
-                curMsg = STOPPEDMSG;
+                if (sharedFile.state == DownloadState.completed || sharedFile.state == DownloadState.stopped)
+                {
+                    curMsg = STOPPEDMSG;
+                }
+                else
+                {
+                    curMsg = SEARCHINGPEERSMSG;
+                }
             }
+
             if (InvokeRequired)
             {
                 Invoke(new MethodInvoker(() => FilesArea.Items[sharedFile.listViewEntryID].SubItems[3].Text =
@@ -317,11 +368,21 @@ namespace CourseWork
         {
             if (InvokeRequired)
             {
-                Invoke(new MethodInvoker(() => FilesArea.Items[sharedFile.listViewEntryID].SubItems[3].Text = message));
+                Invoke(new MethodInvoker(() => {
+                    if (message != null)
+                    {
+                        FilesArea.Items[sharedFile.listViewEntryID].SubItems[3].Text = message;
+                    }
+                    ChangeButtonsState();
+                }));
             }
             else
             {
-                FilesArea.Items[sharedFile.listViewEntryID].SubItems[3].Text = message;
+                if (message != null)
+                {
+                    FilesArea.Items[sharedFile.listViewEntryID].SubItems[3].Text = message;
+                }
+                ChangeButtonsState();
             }
         }
 
@@ -360,39 +421,31 @@ namespace CourseWork
             }
         }
 
+        // remove it
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            //foreach (var file in filesList)
-            //{
-            //    if (file.state == DownloadState.downloading)
-            //    {
-            //        await file.StopAsync().ConfigureAwait(false);
-            //        file.SerializeToFile();
-            //    }
-            //    file.CloseSession();
-            //}
-            //FileWorker.CloseMainSession();
-            //DownloadingFile.messageHandler.Stop();
-        }
-
-        private async void MainForm_FormClosed(object sender, FormClosedEventArgs e)
         {
             foreach (var file in filesList)
             {
-                if (file.state == DownloadState.downloading)
+                if (file.state == DownloadState.downloading ||
+                    file.state == DownloadState.stopping)
                 {
-                    await file.StopAsync().ConfigureAwait(false);
+                    MessageBox.Show("Please, stop all pending downloads before exiting", "Warning",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    e.Cancel = true;
+                    return;
                 }
                 file.SerializeToFile();
                 file.CloseSession();
             }
             FileWorker.CloseMainSession();
             DownloadingFile.messageHandler.Stop();
-            //FileWorker.
         }
 
-        // some kind of race condition when file is downloaded.. sometimes progress bar doesn't update the last one?
-        // never could repeat, so let's see
+        private async void MainForm_FormClosed(object sender, FormClosedEventArgs e)
+        {
+
+            //FileWorker.
+        }
 
         private DownloadingFile FindEntryByIndex(int index)
         {
@@ -410,52 +463,112 @@ namespace CourseWork
 
         private async void StopButton_Click(object sender, EventArgs e)
         {
-            StartButton.Enabled = RehashButton.Enabled = RemoveButton.Enabled = DeleteButton.Enabled = true;
-            StopButton.Enabled = false;
-            fileIsDownloading = false;
-            await nowSelected.StopAsync().ConfigureAwait(false);
+            var tempSelected = nowSelected;
+            await Task.Run(async () => await tempSelected.StopAsync().ConfigureAwait(false));
             // save the current state to the session file
-            nowSelected.SerializeToFile();
+            tempSelected.SerializeToFile();
+            fileIsDownloading = false;
         }
 
         private async void StartButton_Click(object sender, EventArgs e)
         {
-            StartButton.Enabled = RehashButton.Enabled = RemoveButton.Enabled = DeleteButton.Enabled = false;
-            StopButton.Enabled = true;
             fileIsDownloading = true;
             await nowSelected.StartAsync().ConfigureAwait(false);
         }
 
         private void RemoveButton_Click(object sender, EventArgs e)
         {
-
+            var result = MessageBox.Show("Удалить также файл сессии?\r\nПосле его удаления загрузку" +
+                " будет невозможно продолжить",
+                "Внимание", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            if (result == DialogResult.Yes)
+            {
+                nowSelected.CloseSession();
+                nowSelected.RemoveEntry();
+                filesList.Remove(nowSelected);
+                FilesArea.Items.RemoveAt(nowSelected.listViewEntryID);
+            }
+            else if (result == DialogResult.No)
+            {
+                nowSelected.SerializeToFile();
+                nowSelected.CloseSession();
+                filesList.Remove(nowSelected);
+                FilesArea.Items.RemoveAt(nowSelected.listViewEntryID);
+            }
         }
 
         private void DeleteButton_Click(object sender, EventArgs e)
         {
+            var result = MessageBox.Show("Все загруженные файлы и файл сессии будут удалены\r\n" +
+                "Эту операцию невозможно отменить. Продолжить?",
+                "Внимание", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 
+            if (result == DialogResult.Yes)
+            {
+                nowSelected.CloseSession();
+                nowSelected.RemoveEntry();
+                nowSelected.RemoveDownloadedFiles();
+                filesList.Remove(nowSelected);
+                FilesArea.Items.RemoveAt(nowSelected.listViewEntryID);
+            }
         }
 
         private void FilesArea_ItemSelectionChanged(object sender, ListViewItemSelectionChangedEventArgs e)
         {
             StartButton.Enabled = StopButton.Enabled = RehashButton.Enabled =
                 RemoveButton.Enabled = DeleteButton.Enabled = false;
-
+            nowSelected = null;
             if (e.IsSelected)
             {
                 nowSelected = FindEntryByIndex(e.ItemIndex);
-                StartButton.Enabled = RehashButton.Enabled = RemoveButton.Enabled = DeleteButton.Enabled =
-                    (nowSelected.state == DownloadState.stopped);
-                StopButton.Enabled = (nowSelected.state == DownloadState.downloading);
+                ChangeButtonsState();
             }
+        }
+
+        private void ChangeButtonsState()
+        {
+            if (nowSelected == null)
+            {
+                return;
+            }
+
+            bool stopButtonState = true;
+            bool startButtonState = false;
+
+            switch (nowSelected.state)
+            {
+                case DownloadState.completed:
+                case DownloadState.downloading:
+                    break;
+                case DownloadState.stopping:
+                case DownloadState.checking:
+                    // if it's stopping or checking hashes, no buttons should be active
+                    startButtonState = false;
+                    stopButtonState = false;
+                    break;
+                case DownloadState.stopped:
+                    if (!nowSelected.filesCorrupted)
+                    {
+                        startButtonState = true;
+                    }
+                    stopButtonState = false;
+                    break;
+            }
+            StartButton.Enabled = RehashButton.Enabled = RemoveButton.Enabled = DeleteButton.Enabled =
+                startButtonState;
+            StopButton.Enabled = stopButtonState;
         }
 
         private async void RehashButton_Click(object sender, EventArgs e)
         {
-            UpdateStatus(nowSelected, "Checking hashes...");
+            //UpdateStatus(nowSelected, "Checking hashes...");
             await nowSelected.Rehash();
-            UpdateProgress(nowSelected);
-            UpdateStatus(nowSelected, STOPPEDMSG);
+        }
+
+        private void createANewTorrentToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var createTorrentForm = new CreateTorrent();
+            createTorrentForm.Show();
         }
     }
 }

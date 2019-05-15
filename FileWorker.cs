@@ -87,7 +87,8 @@ namespace CourseWork
                     {
                         try
                         {
-                            File.Delete(rootDir + ClearPath(torrent.File.FileName));
+                        //filestream.Name contains filename
+                            File.Delete(files[0].Name);
                         }
                         catch { }
                     }
@@ -104,6 +105,7 @@ namespace CourseWork
                     string path = "";
                     
                     // get path to the file (except for the file name)
+
                     for (int i = 0; i < fileInfo.Path.Count - 1; i++)
                     {
                         path += ClearPath(fileInfo.Path[i]) + Path.DirectorySeparatorChar;
@@ -135,8 +137,12 @@ namespace CourseWork
                         CleanUp(!restoring);
                         for (int i = 0; i < files.Length; i++)
                         {
-                            // would be nice to implement deleting all the files
-                            files[i]?.Close();
+                            if (files[i] != null)
+                            {
+                                files[i].Close();
+                                File.Delete(files[i].Name);
+                            }
+
                         }
                         throw;
                     }
@@ -155,6 +161,29 @@ namespace CourseWork
                 {
                     File.Delete(infoFileName);
                     File.Delete(torrentCopyName);
+                }
+                catch { }
+            }
+        }
+
+        public void RemoveSession()
+        {
+            try
+            {
+                File.Delete(infoFileName);
+                File.Delete(torrentCopyName);
+            }
+            catch
+            { }
+        }
+
+        public void RemoveAllDownloads()
+        {
+            for (int i = 0; i < files.Length; i++)
+            {
+                try
+                {
+                    File.Delete(files[i].Name);
                 }
                 catch { }
             }
@@ -188,7 +217,6 @@ namespace CourseWork
         private static byte[][] GetAllSessionData(string[] sessions)
         {
             byte[][] result = new byte[sessions.Length][];
-            int errorsCount = 0;
             for (int i = 0; i < sessions.Length; i++)
             {
                 try
@@ -198,12 +226,7 @@ namespace CourseWork
                 catch
                 {
                     result[i] = null;
-                    errorsCount++;
                 }
-            }
-            if (errorsCount == result.Length)
-            {
-                return null;
             }
             return result;
         }
