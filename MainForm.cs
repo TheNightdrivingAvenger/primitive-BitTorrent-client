@@ -99,7 +99,7 @@ namespace CourseWork
                 }
                 if (lostFiles != "")
                 {
-                    MessageBox.Show("The following session files: " + lostFiles + "has been lost or corrupted", "Warning",
+                    MessageBox.Show(this, "The following session files: " + lostFiles + "has been lost or corrupted", "Warning",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
 
@@ -123,7 +123,7 @@ namespace CourseWork
                             }
                             catch
                             {
-                                MessageBox.Show("This session file is corrupted and cannot be read:\r\n" +
+                                MessageBox.Show(this, "This session file is corrupted and cannot be read:\r\n" +
                                     fileNames[i], "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             }
                         }
@@ -150,7 +150,7 @@ namespace CourseWork
             }
             catch (IOException)
             {
-                MessageBox.Show("There was an error while trying to open the file.\r\nMake sure file exists and is available for reading\r\n" +
+                MessageBox.Show(this, "There was an error while trying to open the file.\r\nMake sure file exists and is available for reading\r\n" +
                     sessionFileName, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return null;
             }
@@ -260,23 +260,24 @@ namespace CourseWork
                     }
                     catch
                     {
-                        MessageBox.Show("This session file cannot be accessed or is corrupted and cannot be read:\r\n" +
+                        MessageBox.Show(this, "This session file cannot be accessed or is corrupted and cannot be read:\r\n" +
                             OpenFileDia.FileName, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
             }
         }
 
-        public async void TorrentSubmitted(Torrent torrent, string chosenPath, bool start)
+        public async void TorrentSubmitted(Torrent torrent, string chosenPath, bool start, string subDir)
         {
             DownloadingFile newSharedFile;
             try
             {
-                newSharedFile = new DownloadingFile(this, torrent, chosenPath, false);
+                newSharedFile = new DownloadingFile(this, torrent, chosenPath, 
+                    subDir == "" ? null : subDir, false);
             }
             catch // make catch more specific?
             {
-                MessageBox.Show("Could not create some or all of the files.\r\nMake sure the directory is readable" +
+                MessageBox.Show(this, "Could not create some or all of the files.\r\nMake sure the directory is readable" +
                     "and writeable, and that you have enough free disk space.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
@@ -388,17 +389,27 @@ namespace CourseWork
 
         public void ShowError(string message)
         {
-            MessageBox.Show(message, "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (InvokeRequired)
+            {
+                Invoke(new MethodInvoker(() => MessageBox.Show(this, message, "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+            }
+            else
+            {
+                MessageBox.Show(this, message, "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
-        public void UpdateSeedersNum(DownloadingFile sharedFile, string seeders)
+        public void UpdateSeedersLeechersNum(DownloadingFile sharedFile, int seeders, int leechers)
         {
-
-        }
-
-        public void UpdateLeechersNum(DownloadingFile sharedFile, string leechers)
-        {
-
+            if (InvokeRequired)
+            {
+                Invoke(new MethodInvoker(() => FilesArea.Items[sharedFile.listViewEntryID].SubItems[4].Text =
+                    seeders + "/" + leechers));
+            }
+            else
+            {
+                FilesArea.Items[sharedFile.listViewEntryID].SubItems[4].Text = seeders + "/" + leechers;
+            }
         }
 
         public static string GetAppropriateSizeForm(long size)
@@ -421,7 +432,6 @@ namespace CourseWork
             }
         }
 
-        // remove it
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             foreach (var file in filesList)
@@ -429,7 +439,7 @@ namespace CourseWork
                 if (file.state == DownloadState.downloading ||
                     file.state == DownloadState.stopping)
                 {
-                    MessageBox.Show("Please, stop all pending downloads before exiting", "Warning",
+                    MessageBox.Show(this, "Please, stop all pending downloads before exiting", "Warning",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     e.Cancel = true;
                     return;
@@ -439,12 +449,6 @@ namespace CourseWork
             }
             FileWorker.CloseMainSession();
             DownloadingFile.messageHandler.Stop();
-        }
-
-        private async void MainForm_FormClosed(object sender, FormClosedEventArgs e)
-        {
-
-            //FileWorker.
         }
 
         private DownloadingFile FindEntryByIndex(int index)
@@ -478,9 +482,9 @@ namespace CourseWork
 
         private void RemoveButton_Click(object sender, EventArgs e)
         {
-            var result = MessageBox.Show("Удалить также файл сессии?\r\nПосле его удаления загрузку" +
-                " будет невозможно продолжить",
-                "Внимание", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            var result = MessageBox.Show(this, "Also delete the session file?\r\nAfter this" +
+                " you will not be able to continue the download",
+                "Warning", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
             if (result == DialogResult.Yes)
             {
                 nowSelected.CloseSession();
@@ -499,9 +503,9 @@ namespace CourseWork
 
         private void DeleteButton_Click(object sender, EventArgs e)
         {
-            var result = MessageBox.Show("Все загруженные файлы и файл сессии будут удалены\r\n" +
-                "Эту операцию невозможно отменить. Продолжить?",
-                "Внимание", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            var result = MessageBox.Show(this, "All of the downloaded files and the session file " +
+                "will be deleted\r\n" + "This operation cannot be undone. Continue?",
+                "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 
             if (result == DialogResult.Yes)
             {
@@ -539,10 +543,12 @@ namespace CourseWork
             {
                 case DownloadState.completed:
                 case DownloadState.downloading:
+                    RehashButton.Enabled = false;
                     break;
                 case DownloadState.stopping:
                 case DownloadState.checking:
                     // if it's stopping or checking hashes, no buttons should be active
+                    RehashButton.Enabled = false;
                     startButtonState = false;
                     stopButtonState = false;
                     break;
@@ -550,11 +556,16 @@ namespace CourseWork
                     if (!nowSelected.filesCorrupted)
                     {
                         startButtonState = true;
+                        RehashButton.Enabled = true;
+                    }
+                    else
+                    {
+                        RehashButton.Enabled = true;
                     }
                     stopButtonState = false;
                     break;
             }
-            StartButton.Enabled = RehashButton.Enabled = RemoveButton.Enabled = DeleteButton.Enabled =
+            StartButton.Enabled = RemoveButton.Enabled = DeleteButton.Enabled =
                 startButtonState;
             StopButton.Enabled = stopButtonState;
         }

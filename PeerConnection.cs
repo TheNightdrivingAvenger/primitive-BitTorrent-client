@@ -79,7 +79,7 @@ namespace CourseWork
             endPoint = ep;
             MsgRecieved = handler;
             wrongCount = 0;
-            maxPendingOutgoingRequestsCount = 10;
+            maxPendingOutgoingRequestsCount = 5;
 
             IncomingRequests = new LinkedList<Tuple<int, int>>();
             infoHash = expectedInfoHash;

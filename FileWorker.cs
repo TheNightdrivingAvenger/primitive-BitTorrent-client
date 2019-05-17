@@ -24,12 +24,13 @@ namespace CourseWork
         Torrent torrent;
 
         public bool filesMissing { get; }
-        //private LinkedList<PieceInfoNode> pendingOutgoingiecesInfo;
+        //private LinkedList<PieceInfoNode> pendingOutgoingPiecesInfo;
 
         public FileWorker(string rootDir, Torrent torrent, bool restoring)
         {
             this.rootDir = rootDir;
             this.torrent = torrent;
+            Directory.CreateDirectory(rootDir);
 
             FileMode fileMode = FileMode.Create;
             torrentCopyName = rootDir + ClearPath(torrent.DisplayName) + "VSTtbup.torrent";
@@ -51,8 +52,6 @@ namespace CourseWork
                 }
             }
             filesMissing = false;
-            
-            Directory.CreateDirectory(rootDir);
 
             try
             {

@@ -44,10 +44,8 @@ namespace CourseWork
             using (var client = new HttpClient())
             {
                 client.DefaultRequestHeaders.Add("Connection", "Close");
-                // user-agent header param was needed for some reason!
-                client.DefaultRequestHeaders.Add("User-Agent", "myTorrent");
-                // watch out for HTTPRequestException!
-                // бывают исключения при отправке запроса!.. Inner WebException -- не получиолсь разрешить DNS
+                // user-agent header param was needed for some reason
+                client.DefaultRequestHeaders.Add("User-Agent", "VST0001");
                 response = await client.GetByteArrayAsync(requestURI).ConfigureAwait(false); ;
             }
             var parser = new BencodeParser();

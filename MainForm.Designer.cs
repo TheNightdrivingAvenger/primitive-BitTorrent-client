@@ -65,7 +65,7 @@
             this.FilesArea.Location = new System.Drawing.Point(0, 63);
             this.FilesArea.MultiSelect = false;
             this.FilesArea.Name = "FilesArea";
-            this.FilesArea.Size = new System.Drawing.Size(1083, 478);
+            this.FilesArea.Size = new System.Drawing.Size(1097, 478);
             this.FilesArea.TabIndex = 0;
             this.FilesArea.UseCompatibleStateImageBehavior = false;
             this.FilesArea.View = System.Windows.Forms.View.Details;
@@ -103,7 +103,7 @@
             this.fileToolStripMenuItem});
             this.menuStrip1.Location = new System.Drawing.Point(0, 0);
             this.menuStrip1.Name = "menuStrip1";
-            this.menuStrip1.Size = new System.Drawing.Size(1083, 28);
+            this.menuStrip1.Size = new System.Drawing.Size(1097, 28);
             this.menuStrip1.TabIndex = 1;
             this.menuStrip1.Text = "menuStrip1";
             // 
@@ -150,7 +150,7 @@
             this.DeleteButton});
             this.mainToolStrip.Location = new System.Drawing.Point(0, 28);
             this.mainToolStrip.Name = "mainToolStrip";
-            this.mainToolStrip.Size = new System.Drawing.Size(1083, 35);
+            this.mainToolStrip.Size = new System.Drawing.Size(1097, 35);
             this.mainToolStrip.TabIndex = 2;
             // 
             // StartButton
@@ -223,7 +223,7 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1083, 541);
+            this.ClientSize = new System.Drawing.Size(1097, 541);
             this.Controls.Add(this.FilesArea);
             this.Controls.Add(this.mainToolStrip);
             this.Controls.Add(this.menuStrip1);
@@ -231,7 +231,6 @@
             this.Name = "MainForm";
             this.Text = "MainWindow";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MainForm_FormClosing);
-            this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.MainForm_FormClosed);
             this.Shown += new System.EventHandler(this.MainForm_Shown);
             this.menuStrip1.ResumeLayout(false);
             this.menuStrip1.PerformLayout();

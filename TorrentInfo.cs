@@ -1,15 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
-
-using BencodeNET.Parsing;
 using BencodeNET.Torrents;
 
 namespace CourseWork
@@ -44,9 +35,31 @@ namespace CourseWork
 
         private void AddTorrentOK_Click(object sender, EventArgs e)
         {
-            //FileWorker.AddNewTorrentAsync();
-            // add it to GUI, then wait
-            ((MainForm)Owner).TorrentSubmitted(pendingTorrent, chosenPath, StartDownloading.Checked);
+            if (CreateSubFolder.Checked)
+            {
+                string cleanPath = FileWorker.ClearPath(SubFolderName.Text);
+                if (cleanPath == "")
+                {
+                    MessageBox.Show("Invalid subfolder name provided", "Warning",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                else
+                {
+                    if (cleanPath != SubFolderName.Text)
+                    {
+                        MessageBox.Show("Invalid path characters has been replaced with \'_\'", "Notice",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    SubFolderName.Text = cleanPath;
+                }
+            }
+            else
+            {
+                SubFolderName.Text = "";
+            }
+            ((MainForm)Owner).TorrentSubmitted(pendingTorrent, DownloadPath.Text,
+                StartDownloading.Checked, SubFolderName.Text);
             this.Close();
         }
 
@@ -56,24 +69,23 @@ namespace CourseWork
             this.Close();
         }
 
-        private void TorrentInfo_Load(object sender, EventArgs e)
-        {
-
-        }
-
         private void BrowseFolderButton_Click(object sender, EventArgs e)
         {
             if (DownloadPathDialog.ShowDialog() == DialogResult.OK)
             {
-                string tail = "";
-                if (CreateSubFolder.Checked)
-                {
-                    tail = pendingTorrent.DisplayName;
-                }
-                chosenPath = DownloadPathDialog.SelectedPath + Path.DirectorySeparatorChar + FileWorker.ClearPath(tail);
-                DownloadPath.Text = chosenPath;
+                DownloadPath.Text = DownloadPathDialog.SelectedPath + Path.DirectorySeparatorChar;
                 AddTorrentOK.Enabled = true;
             }
+        }
+
+        private void CreateSubFolder_CheckedChanged(object sender, EventArgs e)
+        {
+            SubFolderName.Enabled = CreateSubFolder.Checked;
+        }
+
+        private void TorrentInfo_Shown(object sender, EventArgs e)
+        {
+            SubFolderName.Text = pendingTorrent.DisplayName;
         }
     }
 }

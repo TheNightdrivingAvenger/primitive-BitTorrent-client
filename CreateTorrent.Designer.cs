@@ -184,6 +184,7 @@
             this.CreateButton.TabIndex = 2;
             this.CreateButton.Text = "Create (may take some time)";
             this.CreateButton.UseVisualStyleBackColor = true;
+            this.CreateButton.Click += new System.EventHandler(this.CreateButton_Click);
             // 
             // CreateTorrent
             // 

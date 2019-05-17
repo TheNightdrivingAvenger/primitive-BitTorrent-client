@@ -28,7 +28,6 @@ namespace CourseWork
     public class DownloadingFile
     {
         /* Information about shared files */
-        public string downloadPath;
         public DownloadState state { get; private set; }
         public BitArray pieces { get; private set; }
 
@@ -40,28 +39,26 @@ namespace CourseWork
 
         // may be accessed from several threads?
         public long downloaded { get; private set; }
-        /**/
         public long totalSize { get; }
         public long uploaded { get; private set; }
 
         public Torrent torrentContents { get; }
         public FileWorker fileWorker { get; private set; }
-
+        /****/
         /* Connections related information */
         private Semaphore connectionsSemaphore;
         private LinkedList<IPEndPoint> peersAddr;
 
         // may be accessed from several threads!
         private LinkedList<PeerConnection> connectedPeers;
-        /**/
 
         private CancellationTokenSource connectionsCancellationToken;
 
-        // may be accessed from several threads?
         private int unchokedPeersCount;
         private const int MAXUNCHOKEDPEERSCOUNT = 4;
         //private byte outgoingRequestsCount;
         //private static byte maxOutgoingRequestsCount { get; set; } = 10;
+
         private LinkedList<PieceInfoNode> pendingIncomingPiecesInfo;
 
         // 30-seconds timer for unchoking
@@ -75,21 +72,19 @@ namespace CourseWork
 
         /* Handler for messages from connections */
         public static MessageHandler messageHandler;
-        /**/
 
         /* Working with files related information*/
         private int blockSize;
-        private string rootDir;
         private long lastPieceSize;
         public bool filesCorrupted { get; private set; }
         /****/
 
-
+        private bool reannouncing;
 
         public delegate void TimeOutCallBack(PeerConnection connection);
 
         // block size of 16384 is recommended and highly unlikely will change
-        public DownloadingFile(MainForm ownerForm, Torrent torrent, string downloadPath, bool restoring)
+        public DownloadingFile(MainForm ownerForm, Torrent torrent, string downloadPath, string subDir, bool restoring)
         {
             this.ownerForm = ownerForm;
 
@@ -107,7 +102,10 @@ namespace CourseWork
             unchokedPeersCount = 0;
 
             torrentContents = torrent;
-            this.downloadPath = downloadPath;
+            if (subDir != null)
+            {
+                downloadPath += subDir + System.IO.Path.DirectorySeparatorChar;
+            }
             fileWorker = new FileWorker(downloadPath, torrentContents, restoring);
             filesCorrupted = fileWorker.filesMissing;
             totalSize = torrentContents.TotalSize;
@@ -121,7 +119,7 @@ namespace CourseWork
         }
 
         public DownloadingFile(MainForm ownerForm, Torrent torrent, string piecesState, string downloadPath) 
-            : this(ownerForm, torrent, downloadPath, true)
+            : this(ownerForm, torrent, downloadPath, null, true)
         {
             if (piecesState.Length == pieces.Count)
             {
@@ -195,6 +193,7 @@ namespace CourseWork
             state = DownloadState.stopped;
             filesCorrupted = false;
             ownerForm.UpdateStatus(this, MainForm.STOPPEDMSG);
+            ownerForm.UpdateProgress(this);
         }
 
         public async Task StartAsync()
@@ -208,10 +207,11 @@ namespace CourseWork
             // acquiring it means that we don't want to start another download on this file until this stops
             connectionsSemaphore.WaitOne();
             connectionsCancellationToken = new CancellationTokenSource();
-            int result = await FirstConnectToTrackerAsync().ConfigureAwait(false);
-
+            ownerForm.UpdateStatus(this, MainForm.CONNTOTRACKERMSG);
+            int result = await ConnectToTrackerAsync(false).ConfigureAwait(false);
             if (result == 0)
             {
+                ownerForm.UpdateStatus(this, MainForm.SEARCHINGPEERSMSG);
                 if (trackerInterval >= 600)
                 {
                     trackerTimer = new Timer(ReannounceTimerCallback, null, trackerInterval * 1000, trackerInterval * 1000);
@@ -227,74 +227,122 @@ namespace CourseWork
             }
             else
             {
-                // update status here or something
                 connectionsSemaphore.Release();
                 connectionsSemaphore.Dispose();
+                connectionsSemaphore = null;
                 connectionsCancellationToken.Dispose();
                 state = DownloadState.stopped;
-                //ownerForm.UpdateStatus(this, MainForm.NOTRACKER);
+            }
+            if (result == 1)
+            {
+                ownerForm.UpdateStatus(this, MainForm.NOTRACKER);
+            }
+            else if (result == 2)
+            {
+                ownerForm.ShowError(MainForm.INVALTRACKRESPMSG);
+                ownerForm.UpdateStatus(this, MainForm.STOPPEDMSG);
+            }
+            else if (result == 3)
+            {
+                ownerForm.UpdateStatus(this, MainForm.NOPEERSMSG);
             }
         }
 
-        private void ReannounceTimerCallback(object info)
+        private async void ReannounceTimerCallback(object info)
         {
-            // TODO: interval reannounce here; executed in ThreadPool, sync
-            // add flag or just reset timer just in case this takes too long
-            // and next timer callback arrives. Don't want a bunch of 
-            // threads to wait on one semaphore to perform same operation. 1 reannounce is enough
+            if (reannouncing)
+            {
+                return;
+            }
+            reannouncing = true;
+            // had to do with lock here, because it could be disposed while waiting
+            lock (connectionsSemaphore)
+            {
+                if (connectionsSemaphore == null)
+                {
+                    reannouncing = false;
+                    return;
+                }
+                connectionsSemaphore.WaitOne();
+            }
+            if (connectionsCancellationToken != null && !connectionsCancellationToken.IsCancellationRequested)
+            {
+                if (await ConnectToTrackerAsync(true).ConfigureAwait(false) == 0)
+                {
+                    if (trackerInterval >= 600)
+                    {
+                        trackerTimer.Change(trackerInterval * 1000, trackerInterval * 1000);
+                    }
+                    else
+                    {
+                        // if for some reason we didn't get the interval, 
+                        // or if it's too small, set it to 40 minutes
+                        trackerTimer.Change(40 * 60 * 1000, 40 * 60 * 1000);
+                    }
+
+                    await ConnectToPeersAsync().ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                connectionsSemaphore.Release();
+            }
+            reannouncing = false;
         }
 
-        private async Task<int> FirstConnectToTrackerAsync()
+        private async Task<int> ConnectToTrackerAsync(bool isReannounce)
         {
             try
             {
-                ownerForm.UpdateStatus(this, MainForm.CONNTOTRACKERMSG);
-                await GetAndParseTrackerResponseAsync().ConfigureAwait(false);
+                await GetAndParseTrackerResponseAsync(isReannounce).ConfigureAwait(false);
             }
             catch (WebException)
             {
-                ownerForm.UpdateStatus(this, MainForm.NOTRACKER);
                 return 1;
             }
             catch (HttpRequestException)
             {
-                ownerForm.UpdateStatus(this, MainForm.NOTRACKER);
                 return 1;
             }
             catch (InvalidBencodeException<BObject>)
             {
-                ownerForm.ShowError(MainForm.INVALTRACKRESPMSG);
-                ownerForm.UpdateStatus(this, MainForm.STOPPEDMSG);
-                return 1;
+                return 2;
             }
 
             if (peersAddr.Count == 0)
             {
-                ownerForm.UpdateStatus(this, MainForm.NOPEERSMSG);
-                return 1;
+                return 3;
             }
             else
             {
-                ownerForm.UpdateStatus(this, MainForm.SEARCHINGPEERSMSG);
                 return 0;
             }
         }
 
-        private async Task GetAndParseTrackerResponseAsync()
+        private async Task GetAndParseTrackerResponseAsync(bool isReannounce)
         {
             var trackerResponse = new TrackerResponse();
+            string trackerEvent = null;
+            if (!isReannounce)
+            {
+                trackerEvent = "started";
+            }
             await trackerResponse.GetTrackerResponse(this, ownerForm.myPeerID,
-                25000, "started", 50).ConfigureAwait(false);
+                25000, trackerEvent, 50).ConfigureAwait(false);
 
             var parser = new BencodeParser();
+            int complete = 0, incomplete = 0;
             foreach (var item in trackerResponse.response)
             {
                 switch (item.Key.ToString())
                 {
                     case "failure reason":
-                        // something went wrong; other keys may not be present
-                        ownerForm.ShowError(MainForm.TRACKERERRORMSG + item.Value.ToString());
-                        break;
+                        // something went wrong
+                        if (!isReannounce)
+                        {
+                            ownerForm.ShowError(MainForm.TRACKERERRORMSG + item.Value.ToString());
+                        }
+                        return;
                     case "interval":
                         trackerInterval = parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
                         break;
@@ -305,11 +353,11 @@ namespace CourseWork
                         trackerID = parser.Parse<BString>(item.Value.EncodeAsBytes()).ToString();
                         break;
                     case "complete":
-                        ownerForm.UpdateSeedersNum(this, item.Value.EncodeAsString());
+                        complete = (int)parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
                         // number of seeders (peers with completed file). Only for UI purposes I guess...
                         break;
                     case "incomplete":
-                        ownerForm.UpdateLeechersNum(this, item.Value.EncodeAsString());
+                        incomplete = (int)parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
                         // number of leechers; purpose is the same
                         break;
                     case "peers":
@@ -354,6 +402,7 @@ namespace CourseWork
                         break;
                 }
             }
+            ownerForm.UpdateSeedersLeechersNum(this, complete, incomplete);
         }
 
         private async Task ConnectToPeersAsync()
@@ -407,17 +456,8 @@ namespace CourseWork
                     connection.CloseConnection();
                 }
             }
-
-            connectionsCancellationToken.Dispose();
-            connectionsCancellationToken = null;
             connectionsSemaphore.Release();
         }
-
-        //private void DownloadStopped()
-        //{
-        //    state = DownloadState.stopped;
-        //    ownerForm.UpdateStatus(this, MainForm.STOPPEDMSG);
-        //}
 
         private void ConnectionTimeOut(PeerConnection connection)
         {
@@ -475,36 +515,27 @@ namespace CourseWork
             }
             state = DownloadState.stopping;
             ownerForm.UpdateStatus(this, MainForm.STOPPINGMSG);
-            //bool canStop = false;
-            try
-            {
-                connectionsCancellationToken.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // all possible peers from peersAddr list are connected, so this token is already disposed
-                //canStop = true;
-            }
-            catch (NullReferenceException)
-            {
-                // all possible peers from peersAddr list are connected, so this token is already null
-                //canStop = true;
-            }
+            connectionsCancellationToken.Cancel();
+            
             connectionsSemaphore.WaitOne();
-            var peer = connectedPeers.First;
             // no locking because while I go through all connected peers I post messages
             // for closing connections; closing means removing from this list,
             // that means acquiring lock. So MessageHandler's Message Pump would be stopped until
             // I sorted out all the connections and released the lock
-            // and by this point nothing new can be added to this list, so it's safe
-            while (peer != null)
+            List<PeerConnection> localCopy;
+            lock (connectedPeers)
             {
-                var nextPeer = peer.Next;
-                messageHandler.AddTask(new CommandMessage(ControlMessageType.CloseConnection,
-                    this, peer.Value));
-
-                peer = nextPeer;
+                localCopy = new List<PeerConnection>(connectedPeers);
             }
+            if (localCopy.Count != 0)
+            {
+                for (int i = 0; i < localCopy.Count; i++)
+                {
+                    messageHandler.AddTask(new CommandMessage(ControlMessageType.CloseConnection,
+                        this, localCopy[i]));
+                }
+            }
+            localCopy.Clear();
             // (old)I don't clear the list of incoming pieces because maybe it'll be used later;
             // clear it when program is closing or when another download started(/old)
             // (new)clear it now to avoid race-conditions when saving download state to the file,
@@ -512,11 +543,22 @@ namespace CourseWork
             // in the list of pending incoming and saved(/new)
             ClearPendingList();
             trackerTimer.Dispose();
+            // TODO: IOException if I remove the device or something
             await fileWorker.FlushAllAsync().ConfigureAwait(false);
 
             ReannounceAsync("stopped", 0);
+
+            connectionsCancellationToken.Dispose();
+            connectionsCancellationToken = null;
+
             connectionsSemaphore.Release();
-            connectionsSemaphore.Dispose();
+            // lock because I'm gonna dispose the semaphore, so other threads
+            // won't get stuck on WaitOne() if I dispose it while they're blocked
+            lock (connectionsSemaphore)
+            {
+                connectionsSemaphore.Dispose();
+                connectionsSemaphore = null;
+            }
             state = DownloadState.stopped;
             ownerForm.UpdateStatus(this, MainForm.STOPPEDMSG);
         }
@@ -530,7 +572,6 @@ namespace CourseWork
             return new LinkedListNode<IPEndPoint>(new IPEndPoint(new IPAddress(IPArr), port));
         }
 
-        // called from separate thread, synchronization is needed
 
         public bool PeerHasInterestingPieces(PeerConnection connection)
         {
@@ -669,7 +710,7 @@ namespace CourseWork
         {
             // I don't care if this request didn't work out.
             // I'm only interested in getting (if any) new reannounce interval
-            // so it's async void, and I'm gonna try {...} catch {};
+            // so it's async void
             try
             {
                 await GetAndParseReannounceResponseAsync(message, numWant);
@@ -689,8 +730,17 @@ namespace CourseWork
                 switch (item.Key.ToString())
                 {
                     case "interval":
-                        // reset timer?
                         trackerInterval = parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
+                        if (trackerInterval >= 600)
+                        {
+                            trackerTimer.Change(trackerInterval * 1000, trackerInterval * 1000);
+                        }
+                        else
+                        {
+                            // if for some reason we didn't get the interval, 
+                            // or if it's too small, set it to 40 minutes
+                            trackerTimer.Change(40 * 60 * 1000, 40 * 60 * 1000);
+                        }
                         break;
                     case "min interval":
                         trackerMinInterval = parser.Parse<BNumber>(item.Value.EncodeAsBytes()).Value;
@@ -702,11 +752,10 @@ namespace CourseWork
             }
         }
 
-        // what if it throws (fileWorker)?
+        // TODO: what if it throws (fileWorker)?
+        // TODO: IOException if I remove the device or something
         public void AddBlock(int pieceIndex, int offset, byte[] block)
         {
-            // race condition: я сначала нашёл этот элемент здесь, а потом в Stop я снёс весь список,
-            // и рассчитываю, что больше ничего сохранятся не будет. лол
             bool update = false;
             lock (pendingIncomingPiecesInfo)
             {
@@ -774,7 +823,6 @@ namespace CourseWork
 
         private void ClearPendingList()
         {
-            // deadlock?
             lock (pendingIncomingPiecesInfo)
             {
                 var entry = pendingIncomingPiecesInfo.First;
@@ -807,17 +855,17 @@ namespace CourseWork
         private void SendBroadcastHave(int pieceIndex)
         {
             // copy the list here for not locking it for too long
-            LinkedList<PeerConnection> localCopy;
+            List<PeerConnection> localCopy;
             lock (connectedPeers)
             {
-                localCopy = new LinkedList<PeerConnection>(connectedPeers);
+                localCopy = new List<PeerConnection>(connectedPeers);
             }
 
-            foreach (var connection in localCopy)
+            for (int i = 0; i < localCopy.Count; i++)
             {
                 var msg = new PeerMessage(pieceIndex);
                 msg.targetFile = this;
-                msg.targetConnection = connection;
+                msg.targetConnection = localCopy[i];
                 messageHandler.AddTask(new CommandMessage(ControlMessageType.SendInner, msg));
             }
             localCopy.Clear();
