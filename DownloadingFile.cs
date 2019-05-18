@@ -31,6 +31,7 @@ namespace CourseWork
         public DownloadState state { get; private set; }
         public BitArray pieces { get; private set; }
 
+        public string downloadPath { get; }
         private long trackerInterval;
         private long trackerMinInterval;
         public string trackerID { get; private set; }
@@ -78,7 +79,7 @@ namespace CourseWork
         private long lastPieceSize;
         public bool filesCorrupted { get; private set; }
         /****/
-
+        public string stringStatus { get; private set; }
         private bool reannouncing;
 
         public delegate void TimeOutCallBack(PeerConnection connection);
@@ -92,6 +93,7 @@ namespace CourseWork
             peersAddr = new LinkedList<IPEndPoint>();
             connectedPeers = new LinkedList<PeerConnection>();
             state = DownloadState.stopped;
+            stringStatus = MainForm.STOPPEDMSG;
 
             trackerID = null;
             trackerInterval = 0;
@@ -106,6 +108,7 @@ namespace CourseWork
             {
                 downloadPath += subDir + System.IO.Path.DirectorySeparatorChar;
             }
+            this.downloadPath = downloadPath;
             fileWorker = new FileWorker(downloadPath, torrentContents, restoring);
             filesCorrupted = fileWorker.filesMissing;
             totalSize = torrentContents.TotalSize;
@@ -188,11 +191,13 @@ namespace CourseWork
         {
             state = DownloadState.checking;
             ownerForm.UpdateStatus(this, MainForm.CHECKINGMSG);
+            stringStatus = MainForm.CHECKINGMSG;
             BitArray result = await fileWorker.CalculateSHA1().ConfigureAwait(false);
             SetPiecesState(result);
             state = DownloadState.stopped;
             filesCorrupted = false;
             ownerForm.UpdateStatus(this, MainForm.STOPPEDMSG);
+            stringStatus = MainForm.STOPPEDMSG;
             ownerForm.UpdateProgress(this);
         }
 
@@ -208,10 +213,12 @@ namespace CourseWork
             connectionsSemaphore.WaitOne();
             connectionsCancellationToken = new CancellationTokenSource();
             ownerForm.UpdateStatus(this, MainForm.CONNTOTRACKERMSG);
+            stringStatus = MainForm.CONNTOTRACKERMSG;
             int result = await ConnectToTrackerAsync(false).ConfigureAwait(false);
             if (result == 0)
             {
                 ownerForm.UpdateStatus(this, MainForm.SEARCHINGPEERSMSG);
+                stringStatus = MainForm.SEARCHINGPEERSMSG;
                 if (trackerInterval >= 600)
                 {
                     trackerTimer = new Timer(ReannounceTimerCallback, null, trackerInterval * 1000, trackerInterval * 1000);
@@ -236,15 +243,18 @@ namespace CourseWork
             if (result == 1)
             {
                 ownerForm.UpdateStatus(this, MainForm.NOTRACKER);
+                stringStatus = MainForm.NOTRACKER;
             }
             else if (result == 2)
             {
                 ownerForm.ShowError(MainForm.INVALTRACKRESPMSG);
                 ownerForm.UpdateStatus(this, MainForm.STOPPEDMSG);
+                stringStatus = MainForm.STOPPEDMSG;
             }
             else if (result == 3)
             {
                 ownerForm.UpdateStatus(this, MainForm.NOPEERSMSG);
+                stringStatus = MainForm.NOPEERSMSG;
             }
         }
 
@@ -304,11 +314,10 @@ namespace CourseWork
             {
                 return 1;
             }
-            catch (InvalidBencodeException<BObject>)
+            catch (BencodeException)
             {
                 return 2;
             }
-
             if (peersAddr.Count == 0)
             {
                 return 3;
@@ -515,6 +524,7 @@ namespace CourseWork
             }
             state = DownloadState.stopping;
             ownerForm.UpdateStatus(this, MainForm.STOPPINGMSG);
+            stringStatus = MainForm.STOPPINGMSG;
             connectionsCancellationToken.Cancel();
             
             connectionsSemaphore.WaitOne();
@@ -536,11 +546,9 @@ namespace CourseWork
                 }
             }
             localCopy.Clear();
-            // (old)I don't clear the list of incoming pieces because maybe it'll be used later;
-            // clear it when program is closing or when another download started(/old)
-            // (new)clear it now to avoid race-conditions when saving download state to the file,
+            // clear it now to avoid race-conditions when saving download state to the file,
             // because if new pieces will arrive after connection closing they won't be found
-            // in the list of pending incoming and saved(/new)
+            // in the list of pending incoming and saved
             ClearPendingList();
             trackerTimer.Dispose();
             // TODO: IOException if I remove the device or something
@@ -561,6 +569,8 @@ namespace CourseWork
             }
             state = DownloadState.stopped;
             ownerForm.UpdateStatus(this, MainForm.STOPPEDMSG);
+            stringStatus = MainForm.STOPPEDMSG;
+            ownerForm.UpdateProgress(this);
         }
 
 
@@ -798,6 +808,7 @@ namespace CourseWork
                             {
                                 state = DownloadState.completed;
                                 ownerForm.UpdateStatus(this, MainForm.DOWNLOADINGMSG);
+                                stringStatus = MainForm.DOWNLOADINGMSG;
                                 ReannounceAsync("completed", 0);
                             }
                         }

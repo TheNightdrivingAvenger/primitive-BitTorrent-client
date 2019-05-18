@@ -374,6 +374,7 @@ namespace CourseWork
                     {
                         FilesArea.Items[sharedFile.listViewEntryID].SubItems[3].Text = message;
                     }
+                    UpdateAllInfo(sharedFile.downloadPath, sharedFile.torrentContents, message);
                     ChangeButtonsState();
                 }));
             }
@@ -383,6 +384,7 @@ namespace CourseWork
                 {
                     FilesArea.Items[sharedFile.listViewEntryID].SubItems[3].Text = message;
                 }
+                UpdateAllInfo(sharedFile.downloadPath, sharedFile.torrentContents, message);
                 ChangeButtonsState();
             }
         }
@@ -526,6 +528,52 @@ namespace CourseWork
             {
                 nowSelected = FindEntryByIndex(e.ItemIndex);
                 ChangeButtonsState();
+                UpdateAllInfo(nowSelected.downloadPath, nowSelected.torrentContents, nowSelected.stringStatus);
+            }
+            else
+            {
+                UpdateAllInfo(null, null, null);
+            }
+        }
+
+        private void UpdateAllInfo(string path, Torrent torrentContents, string status)
+        {
+            if (nowSelected == null)
+            {
+                DownloadPathLbl.Text = "";
+                CreatedLbl.Text = "";
+                InfoHashLbl.Text = "";
+                CommentLbl.Text = "";
+                PiecesLbl.Text = "";
+                StatusLbl.Text = "";
+                FilesInfoList.Items.Clear();
+                return;
+            }
+
+            DownloadPathLbl.Text = path;
+            if (torrentContents.CreationDate.HasValue) {
+                CreatedLbl.Text = torrentContents.CreationDate.Value.ToShortDateString() + ", "
+                    + torrentContents.CreationDate.Value.ToShortTimeString();
+            }
+            InfoHashLbl.Text = torrentContents.OriginalInfoHash;
+            CommentLbl.Text = torrentContents.Comment;
+            PiecesLbl.Text = torrentContents.NumberOfPieces + " x " + GetAppropriateSizeForm(torrentContents.PieceSize);
+            StatusLbl.Text = status;
+            string[] subItems = new string[2];
+            if (torrentContents.File != null)
+            {
+                subItems[0] = torrentContents.File.FileName;
+                subItems[1] = GetAppropriateSizeForm(torrentContents.File.FileSize);
+                FilesInfoList.Items.Add(new ListViewItem(subItems));
+            }
+            else
+            {
+                foreach (var file in torrentContents.Files)
+                {
+                    subItems[0] = file.FileName;
+                    subItems[1] = GetAppropriateSizeForm(file.FileSize);
+                    FilesInfoList.Items.Add(new ListViewItem(subItems));
+                }
             }
         }
 
