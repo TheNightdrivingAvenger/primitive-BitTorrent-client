@@ -36,8 +36,6 @@ namespace CourseWork
         public string myPeerID { get; private set; }
 
         private DownloadingFile nowSelected;
-        //private static MessageHandler messageHandler;
-        //private LinkedList<ListViewItem> filesView;
 
         private bool fileIsDownloading;
 
@@ -53,7 +51,7 @@ namespace CourseWork
                 filesList = new LinkedList<DownloadingFile>();
             }
             myPeerID = GeneratePeerID();
-            DownloadingFile.messageHandler = new MessageHandler(400, filesList);
+            DownloadingFile.messageHandler = new MessageHandler(400);
             if (!DownloadingFile.messageHandler.isStarted)
             {
                 DownloadingFile.messageHandler.Start();
@@ -156,37 +154,12 @@ namespace CourseWork
             }
         }
 
-        // can use BString contents, or at least dictionary's value, not the whole dict
         private void ParseSession(BDictionary contents, Torrent newTorrent, string sessionPath)
         {
             string piecesState = standardParser.Parse<BString>(contents.First().Value.EncodeAsBytes()).ToString();
             var sharedFile = new DownloadingFile(this, newTorrent, piecesState, sessionPath);
             filesList.AddLast(sharedFile);
         }
-
-        //private void ParseSession(BDictionary contents, Torrent newTorrent, string sessionPath)
-        //{
-        //    var list = standardParser.Parse<BList>(contents.First().Value.EncodeAsBytes());
-        //    if (list[0] is BString)
-        //    {
-        //        string piecesState = list[0].EncodeAsString();
-        //        if (list[1] is BString)
-        //        {
-        //            string SHA1 = list[1].EncodeAsString();
-        //            var sharedFile = new DownloadingFile(this, newTorrent, piecesState, SHA1,
-        //                Path.GetDirectoryName(sessionPath));
-        //            filesList.AddLast(sharedFile);
-        //        }
-        //        else
-        //        {
-        //            throw new ArgumentException("Invalid dictionary contents");
-        //        }
-        //    }
-        //    else
-        //    {
-        //        throw new ArgumentException("Invalid dictionary contents");
-        //    }
-        //}
 
         private void MainForm_Shown(object sender, EventArgs e)
         {
@@ -202,16 +175,8 @@ namespace CourseWork
                     UpdateProgress(downloadingFile);
                     UpdateStatus(downloadingFile, STOPPEDMSG);
                 }
-                try
-                {
-                    downloadingFile.AddToMainSession();
-                }
-                catch
-                {
-                    // cannot add the file to the main session
-                    // (disk space or something, just cannot write to the file)
-                }
             }
+            FileWorker.ClearMainSession();
         }
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
@@ -247,15 +212,6 @@ namespace CourseWork
                             {
                                 UpdateProgress(filesList.Last.Value);
                             }
-                            try
-                            {
-                                filesList.Last.Value.AddToMainSession();
-                            }
-                            catch
-                            {
-                                // cannot add the file to the main session
-                                // (disk space or something, just cannot write to the file)
-                            }
                         }
                     }
                     catch
@@ -275,7 +231,7 @@ namespace CourseWork
                 newSharedFile = new DownloadingFile(this, torrent, chosenPath, 
                     subDir == "" ? null : subDir, false);
             }
-            catch // make catch more specific?
+            catch
             {
                 MessageBox.Show(this, "Could not create some or all of the files.\r\nMake sure the directory is readable" +
                     "and writeable, and that you have enough free disk space.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -287,7 +243,6 @@ namespace CourseWork
 
         private void AddNewViewListEntry(DownloadingFile newSharedFile)
         {
-            // ВСЕ столбцы строки ListView индексируются (с 0)
             ListViewItem newFile = new ListViewItem(newSharedFile.torrentContents.DisplayName);
             newFile.SubItems.Add(GetAppropriateSizeForm(newSharedFile.totalSize));
             newFile.SubItems.Add("0.00%");
@@ -301,7 +256,6 @@ namespace CourseWork
         private async Task AddNewTorrentAsync(DownloadingFile newSharedFile, bool start)
         {
             filesList.AddLast(newSharedFile);
-            newSharedFile.AddToMainSession();
             if (start && !fileIsDownloading)
             {
                 fileIsDownloading = true;
@@ -448,6 +402,7 @@ namespace CourseWork
                 }
                 file.SerializeToFile();
                 file.CloseSession();
+                file.AddToMainSession();
             }
             FileWorker.CloseMainSession();
             DownloadingFile.messageHandler.Stop();
@@ -487,11 +442,13 @@ namespace CourseWork
             var result = MessageBox.Show(this, "Also delete the session file?\r\nAfter this" +
                 " you will not be able to continue the download",
                 "Warning", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            int ID = -1;
             if (result == DialogResult.Yes)
             {
                 nowSelected.CloseSession();
                 nowSelected.RemoveEntry();
                 filesList.Remove(nowSelected);
+                ID = nowSelected.listViewEntryID;
                 FilesArea.Items.RemoveAt(nowSelected.listViewEntryID);
             }
             else if (result == DialogResult.No)
@@ -499,7 +456,27 @@ namespace CourseWork
                 nowSelected.SerializeToFile();
                 nowSelected.CloseSession();
                 filesList.Remove(nowSelected);
+                ID = nowSelected.listViewEntryID;
                 FilesArea.Items.RemoveAt(nowSelected.listViewEntryID);
+            }
+            if (result != DialogResult.Cancel)
+            {
+                UpdateIDs(ID);
+            }
+        }
+
+        private void UpdateIDs(int startIndex)
+        {
+            int i = 0;
+            var entry = filesList.First;
+            while (entry != null)
+            {
+                var nextEntry = entry.Next;
+                if (i++ >= startIndex)
+                {
+                    entry.Value.listViewEntryID--;
+                }
+                entry = nextEntry;
             }
         }
 
@@ -620,14 +597,11 @@ namespace CourseWork
 
         private async void RehashButton_Click(object sender, EventArgs e)
         {
-            //UpdateStatus(nowSelected, "Checking hashes...");
             await nowSelected.Rehash();
         }
 
-        private void createANewTorrentToolStripMenuItem_Click(object sender, EventArgs e)
+        private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            var createTorrentForm = new CreateTorrent();
-            createTorrentForm.Show();
         }
     }
 }

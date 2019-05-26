@@ -2,10 +2,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Net;
-using System.Net.Sockets;
 using System.Threading;
 
 using BencodeNET.Parsing;
@@ -18,13 +16,6 @@ namespace CourseWork
 {
     public enum DownloadState { completed, downloading, stopped, stopping, checking };
 
-    // what if I get two reannounces at once? For example, the one from timer starts and then user hits "Stop"
-    // so I create a new CancellationToken, and if old hasn't been cancelled and disposed yet, it just
-    // gets lost. A dangling pointer. Perfect.
-    // Or I hit Stop and then immidiately hit Start. I can happen that ConnectToPeersAsync hasn't seen
-    // the cancellation, and Start creates a new token. So it continues to work with this new token as with
-    // the old one. And old one is a dangling pointer. Fixed by a bit of busy-waiting
-    // TODO: finally get all the needed stuff locked!!!
     public class DownloadingFile
     {
         /* Information about shared files */
@@ -38,7 +29,6 @@ namespace CourseWork
 
         private Timer trackerTimer;
 
-        // may be accessed from several threads?
         public long downloaded { get; private set; }
         public long totalSize { get; }
         public long uploaded { get; private set; }
@@ -50,20 +40,13 @@ namespace CourseWork
         private Semaphore connectionsSemaphore;
         private LinkedList<IPEndPoint> peersAddr;
 
-        // may be accessed from several threads!
         private LinkedList<PeerConnection> connectedPeers;
 
         private CancellationTokenSource connectionsCancellationToken;
 
-        private int unchokedPeersCount;
         private const int MAXUNCHOKEDPEERSCOUNT = 4;
-        //private byte outgoingRequestsCount;
-        //private static byte maxOutgoingRequestsCount { get; set; } = 10;
 
         private LinkedList<PieceInfoNode> pendingIncomingPiecesInfo;
-
-        // 30-seconds timer for unchoking
-        private Timer unchokeTimer;
         /****/
 
         /* UI related information */
@@ -100,8 +83,6 @@ namespace CourseWork
             trackerMinInterval = 0;
             downloaded = 0;
             uploaded = 0;
-
-            unchokedPeersCount = 0;
 
             torrentContents = torrent;
             if (subDir != null)
@@ -551,7 +532,6 @@ namespace CourseWork
             // in the list of pending incoming and saved
             ClearPendingList();
             trackerTimer.Dispose();
-            // TODO: IOException if I remove the device or something
             await fileWorker.FlushAllAsync().ConfigureAwait(false);
 
             ReannounceAsync("stopped", 0);
@@ -585,8 +565,6 @@ namespace CourseWork
 
         public bool PeerHasInterestingPieces(PeerConnection connection)
         {
-            // for now it just finds the first interesting piece the Peer can offer that I haven't downloaded yet;
-            // later can be simply changed to whatever algorithm is needed
             lock (pieces)
             {
                 for (int i = 0; i < connection.peersPieces.Count; i++)
@@ -604,10 +582,6 @@ namespace CourseWork
         public Tuple<int, int, int> FindNextRequest(PeerConnection connection)
         {
             Tuple<int, int, int> result;
-            // можно добавить флаг для того, чтобы различать: у пира нет кусочков из моего списка,
-            // или просто все блоки уже запрошены и надо запросить новый кусочек, но не содержащийся в этом списке.
-            // поможет потом при оптимизации циклов (в одном случае нужно просто найти у себя первый не загруженный,
-            // в другом -- смотреть ещё, есть ли в списке запрошенных уже этот кусочек или нет)
             // here we search for any non-downloaded and non-requested blocks within pending pieces
             lock (pendingIncomingPiecesInfo)
             {
@@ -646,8 +620,6 @@ namespace CourseWork
                         return result;
                     }
                 }
-                // for now it just finds the first interesting piece the Peer can offer;
-                // later can be simply changed to whatever algorithm is needed
 
                 // if we didn't find anything in pieces we're already downloading (or the Peer doesn't have it),
                 // we simply find the first fitting piece the Peer has
@@ -762,8 +734,6 @@ namespace CourseWork
             }
         }
 
-        // TODO: what if it throws (fileWorker)?
-        // TODO: IOException if I remove the device or something
         public void AddBlock(int pieceIndex, int offset, byte[] block)
         {
             bool update = false;

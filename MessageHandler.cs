@@ -1,28 +1,18 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace CourseWork
 {
     public class MessageHandler
     {
-        // when we've got nothing to do, we go and check downloading files
-        // (only active right now I guess) and their connections to see if
-        // we can send something to peers on these connections (for example, pieces)
-        // TODO: consider removing if algorithm changes
-        private LinkedList<DownloadingFile> downloadingFiles;
-
         public bool isStarted { get; private set; }
         public bool isStopped { get; private set; }
         public bool isCompleted { get; private set; }
         private Thread workerThread;
         private BlockingCollection<Message> messageQueue;
 
-        public MessageHandler(int maxQueueLength, LinkedList<DownloadingFile> downloadingFiles)
+        public MessageHandler(int maxQueueLength)
         {
             //By default, the storage for a System.Collections.Concurrent.BlockingCollection<T> 
             //is System.Collections.Concurrent.ConcurrentQueue<T>.
@@ -31,7 +21,6 @@ namespace CourseWork
             isStarted = false;
             isStopped = false;
             isCompleted = false;
-            this.downloadingFiles = downloadingFiles;
         }
 
         public void Start()
@@ -56,9 +45,6 @@ namespace CourseWork
                 Message msg;
                 try
                 {
-                    // TODO: It's a good idea to not block here, but instead go and check if there're any
-                    // requests for me to send blocks. If there are, then go and send a couple of messages to peers
-                    // (keep-alives maybe, "pieces"). OR wait for CommandMessage (now things have changed)
                     msg = messageQueue.Take();
                 }
                 catch (InvalidOperationException)
@@ -70,9 +56,6 @@ namespace CourseWork
             isCompleted = true;
         }
 
-        // probably a not bad solution for using "await" is first collect the data
-        // from data structures and copy it here if needed, then just call (maybe in cycle) "await Send"
-        // with all this data; so no data-accessing after awaits, no sync needed
         private void Handler(Message msg)
         {
             if (msg is CommandMessage)
@@ -128,11 +111,7 @@ namespace CourseWork
                 switch (message.messageType)
                 {
                     case PeerMessageType.keepAlive:
-
                         return; // return because I don't need to call "ConnectionStateChanged"
-                                // maybe if I have some pending requests on this connection and do not receive them,
-                                // I could send "cancel"
-                                // and then ask for blocks somewhere else
                     case PeerMessageType.choke:
                         message.targetConnection.SetPeerChoking();
                         message.targetFile.ReceivedChokeOrDisconnected(message.targetConnection);
@@ -142,7 +121,6 @@ namespace CourseWork
                         break;
                     case PeerMessageType.interested:
                         message.targetConnection.SetPeerInterested();
-                        // TODO: choking-unchoking algorithms and stuff
                         return;
                     case PeerMessageType.notInterested:
                         message.targetConnection.SetPeerNotInterested();
@@ -167,8 +145,6 @@ namespace CourseWork
                         message.targetConnection.SetBitField(message);
                         break;
                     case PeerMessageType.request:
-                        // add pending !INCOMING! piece request to list! (if it's not there yet)
-                        // check boundaries here before adding to the queue
                         return;
                     case PeerMessageType.piece:
                         byte[] block = new byte[message.GetMsgContents().Length - message.rawBytesOffset];
@@ -184,7 +160,6 @@ namespace CourseWork
                         }
                         break;
                     case PeerMessageType.cancel:
-                        // TODO: remove from pending incoming requests (whatever this means now);
                         return;
                     case PeerMessageType.port:
                         return;
@@ -198,9 +173,6 @@ namespace CourseWork
 
         }
 
-        // probably a not bad solution for using "await" is first collect the data
-        // from data structures and copy it here if needed, then just call (maybe in cycle) "await Send"
-        // with all this data; so no data-accessing after awaits, no sync needed
         private void ConnectionStateChanged(PeerMessage message)
         {
             bool interestingPieces = message.targetFile.PeerHasInterestingPieces(message.targetConnection);
@@ -257,10 +229,7 @@ namespace CourseWork
                 else if (interestingPieces && 
                     message.targetConnection.outgoingRequestsCount < message.targetConnection.maxPendingOutgoingRequestsCount)
                 {
-                    // optimization thoughts: search interesting pieces not one-by-one, but all possible from one 
-                    // list traversal; return them here, send requests for all at once;
-                    // start finding new not when event 1 slot for request is available, but when, for example, 1/2 of slots
-                    // TODO: try to optimize this
+
                     Tuple<int, int, int> nextRequest = message.targetFile.FindNextRequest(message.targetConnection);
                     // <= because last ++ (if nextRequest is not null) occured in FindNextRequest, so we need to send
                     // this newly added request
@@ -269,7 +238,6 @@ namespace CourseWork
                     {
                         try
                         {
-                            // I can actually use await SendPeerMessage above, and here .Result, but...
                             message.targetConnection.AddOutgoingRequest(nextRequest.Item1, nextRequest.Item2);
                             message.targetConnection.SendPeerMessage(new PeerMessage(PeerMessageType.request, nextRequest.Item1,
                                 nextRequest.Item2, nextRequest.Item3));

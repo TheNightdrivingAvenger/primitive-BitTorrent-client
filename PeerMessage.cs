@@ -1,10 +1,6 @@
 ﻿using System;
 using System.Collections;
-using System.Linq;
-using System.Net.Sockets;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 // MESSAGE LENGTH DOES NOT INCLUDE 4 BYTES THAT CONTAIN LENGTH ITSELF
 
@@ -40,8 +36,6 @@ namespace CourseWork
         public const int msgTypeSpace = 1;
         public const int msgIntSpace = 4;
         public const int msgLenSpace = msgIntSpace;
-        //private const int hashLen = 20;
-        //private const int peerIDLen = 20;
 
         public byte[] GetMsgContents()
         {
@@ -237,8 +231,6 @@ namespace CourseWork
                     }
                 }
             }
-            // 10 is a damn magic constant, but ok for now...
-            // it's maximum possible ID of a message
             if (msgContents[msgLenSpace] <= 10)
             {
                 messageType = (PeerMessageType)msgContents[msgLenSpace];

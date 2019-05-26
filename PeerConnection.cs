@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,42 +17,32 @@ namespace CourseWork
     * 0bW1YZ -- peerChoking
     * 0b0XYZ -- peerNotInterested
     * 0b1XYZ -- peerInterested
-    * Just combinations of flags
     */
     [Flags]
     public enum CONNSTATES { None = 0, AM_CHOKING = 0b0001, AM_INTERESTED = 0b0010, PEER_CHOKING = 0b0100, PEER_INTERESTED = 0b1000 }
 
-    // need a couple of timers for keep-alives, choking-unchoking
     // receiving is performed from the main thread; then received message is sent to another (MessageHandler) thread
     // for processing. All subsequent actions (setting logical connection state and sending messages to peers)
     // are performed from this MessageHandler thread
 
-    // TODO: implement piece sharing
     public class PeerConnection
     {
         private const int MAXWRONGMESSAGES = 10;
 
-        // for now used only by MessageHandler's thread, so no sync needed
         public BitArray peersPieces { get; private set; }
-        // no sync, used only in main thread
         private TcpClient connectionClient;
         public CONNSTATES connectionState { get; private set; }
         private IPEndPoint endPoint;
         private byte[] infoHash;
-        // do I need peerID here?..
 
         public bool bitfieldSent;
 
-        // contains piece number and block offset or null if cell is empty
-        // now no locking is needed
         public Tuple<int, int>[] outgoingRequests;
         public int outgoingRequestsCount { get; private set; }
 
-        // need sync?
         // first int = piece number; second int = piece's block number
         public LinkedList<Tuple<int, int>> IncomingRequests { get; private set; }
 
-        // hide it or make a property or something...
         public int maxPendingOutgoingRequestsCount;
         private int wrongCount;
 
@@ -74,8 +62,6 @@ namespace CourseWork
             connectionClient = new TcpClient();
             peersPieces = new BitArray(piecesCount);
             bitfieldSent = false;
-            // copy it here to be independent from list entry?
-            //endPoint = new IPEndPoint(ep.Address, ep.Port);
             endPoint = ep;
             MsgRecieved = handler;
             wrongCount = 0;
@@ -98,7 +84,6 @@ namespace CourseWork
             activityTimer.Change(TIMEOUT * 1000, TIMEOUT * 1000);
         }
 
-        // !MAKE HANDSHAKING ALGORITHM BETTER!
         public async Task<int> PeerHandshakeAsync(byte[] infoHash, string peerID, CancellationTokenSource cancellationToken)
         {            
             await connectionClient.ConnectAsync(endPoint.Address, endPoint.Port).ConfigureAwait(false);
@@ -112,7 +97,6 @@ namespace CourseWork
 
             var message = await RecieveHandshakeMessageAsync(cancellationToken).ConfigureAwait(false);
 
-            //add checking if hash in the response is valid
             if (message == null || message.messageType != PeerMessageType.handshake)
             {
                 return -1;
@@ -179,7 +163,6 @@ namespace CourseWork
             int left = PeerMessage.msgLenSpace;
             int bufOffset = 0;
             byte[] buf = new byte[4];
-            // exceptions!
             // getting the first 4 bytes of the message that'll tell us how many more to expect
             while (left != 0)
             {
@@ -201,8 +184,7 @@ namespace CourseWork
             {
                 return null;
             }
-            // count of peersPieces won't change, so no synchronization is needed. If it causes any problems,
-            // I can just save the initial size and use it
+            // count of peersPieces won't change, so no synchronization is needed
             return new PeerMessage(buf, peersPieces.Count);
         }
 
@@ -215,7 +197,6 @@ namespace CourseWork
         {
             // no copy because msgContents is only 4 bytes long at this point and contains only BE message length
             int msgLen = BitConverter.ToInt32(HTONNTOH(buf), 0);
-            // also can do something if the length is way too big
             if (msgLen == 0)
             {
                 return new byte[4];
@@ -238,7 +219,6 @@ namespace CourseWork
             return result;
         }
 
-        // alternative realisation: separate thread
         public async void StartPeerMessageLoop()
         {
             while (true)
@@ -287,8 +267,6 @@ namespace CourseWork
             connectionClient.Dispose();
         }
 
-        // ALL THE METHODS BELOW MAY BE CALLED FROM ANOTHER THREAD, SO THREAD-SAFETY MUST BE PROVIDED WHERE NEEDED //
-
         // enum updates are atomic
         public void SetPeerChoking()
         {
@@ -319,7 +297,6 @@ namespace CourseWork
         {
             for (int i = message.rawBytesOffset; i < message.GetMsgContents().Length; i++)
             {
-                // NO LOCKING because only MessageHandler's thread uses these values
                 byte mask = 0b10000000;
                 byte curByte = message.GetMsgContents()[i];
                 for (int bit = 7; bit >= 0; bit--)
@@ -357,7 +334,6 @@ namespace CourseWork
 
         public void AddIncomingRequest(int piece, int offset)
         {
-            // no locking; only one thread can access this
             IncomingRequests.AddLast(new Tuple<int, int>(piece, offset));
         }
 
@@ -369,8 +345,6 @@ namespace CourseWork
 
         public void AddOutgoingRequest(int pieceIndex, int offset)
         {
-            // can it be possible that we didn't find a place? Probly not,
-            // because calling code must track this
             bool placeFound = false;
             for (int i = 0; i < outgoingRequests.Length && !placeFound; i++)
             {

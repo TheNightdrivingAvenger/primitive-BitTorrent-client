@@ -3,7 +3,6 @@ using System.Collections;
 
 namespace CourseWork
 {
-    // class only because it's reference type and makes it simplier; should have been a struct
     public class PieceInfoNode
     {
         public int pieceIndex;

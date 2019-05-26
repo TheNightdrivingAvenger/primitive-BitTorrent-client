@@ -1,16 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Linq;
 using System.Threading.Tasks;
-using System.Net;
-using System.Net.Sockets;
 
 using System.Net.Http;
-using System.Web;
 using BencodeNET.Parsing;
 using BencodeNET.Objects;
-using BencodeNET.Torrents;
 
 namespace CourseWork
 {
@@ -22,15 +15,7 @@ namespace CourseWork
         public async Task GetTrackerResponse(DownloadingFile downloadingFile, string peerID, int myPort,
             string eventStr, int numWant)
         {
-            // do something with different trackers
             string baseURI = downloadingFile.torrentContents.Trackers.ElementAt(0).ElementAt(0);
-            //foreach (var URIList in torrent.Trackers)
-            //{
-            //    foreach (var URI in URIList)
-            //    {
-            //        //getting tracker's URIs
-            //    }
-            //}
             string URIFormedHash = URIEncode(downloadingFile.torrentContents.OriginalInfoHashBytes);
 
             string requestURI = baseURI + '?' + "info_hash=" + URIFormedHash +
@@ -44,7 +29,6 @@ namespace CourseWork
             using (var client = new HttpClient())
             {
                 client.DefaultRequestHeaders.Add("Connection", "Close");
-                // user-agent header param was needed for some reason
                 client.DefaultRequestHeaders.Add("User-Agent", "VST0001");
                 response = await client.GetByteArrayAsync(requestURI).ConfigureAwait(false); ;
             }

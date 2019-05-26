@@ -37,7 +37,6 @@
             this.menuStrip1 = new System.Windows.Forms.MenuStrip();
             this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.createANewTorrentToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.OpenFileDia = new System.Windows.Forms.OpenFileDialog();
             this.mainToolStrip = new System.Windows.Forms.ToolStrip();
             this.StartButton = new System.Windows.Forms.ToolStripButton();
@@ -50,23 +49,25 @@
             this.MainContainer = new System.Windows.Forms.SplitContainer();
             this.InfoTabControl = new System.Windows.Forms.TabControl();
             this.FilesTab = new System.Windows.Forms.TabPage();
-            this.InfoTab = new System.Windows.Forms.TabPage();
             this.FilesInfoList = new System.Windows.Forms.ListView();
             this.FileNames = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.FilesSize = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.InfoTab = new System.Windows.Forms.TabPage();
             this.InfoContainer = new System.Windows.Forms.Panel();
-            this.label1 = new System.Windows.Forms.Label();
-            this.label2 = new System.Windows.Forms.Label();
-            this.label3 = new System.Windows.Forms.Label();
-            this.label4 = new System.Windows.Forms.Label();
-            this.label5 = new System.Windows.Forms.Label();
-            this.label6 = new System.Windows.Forms.Label();
-            this.DownloadPathLbl = new System.Windows.Forms.Label();
-            this.CreatedLbl = new System.Windows.Forms.Label();
-            this.InfoHashLbl = new System.Windows.Forms.Label();
-            this.CommentLbl = new System.Windows.Forms.Label();
-            this.PiecesLbl = new System.Windows.Forms.Label();
             this.StatusLbl = new System.Windows.Forms.Label();
+            this.PiecesLbl = new System.Windows.Forms.Label();
+            this.CommentLbl = new System.Windows.Forms.Label();
+            this.InfoHashLbl = new System.Windows.Forms.Label();
+            this.CreatedLbl = new System.Windows.Forms.Label();
+            this.DownloadPathLbl = new System.Windows.Forms.Label();
+            this.label6 = new System.Windows.Forms.Label();
+            this.label5 = new System.Windows.Forms.Label();
+            this.label4 = new System.Windows.Forms.Label();
+            this.label3 = new System.Windows.Forms.Label();
+            this.label2 = new System.Windows.Forms.Label();
+            this.label1 = new System.Windows.Forms.Label();
+            this.infoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.aboutToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.menuStrip1.SuspendLayout();
             this.mainToolStrip.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.MainContainer)).BeginInit();
@@ -128,7 +129,8 @@
             // 
             this.menuStrip1.ImageScalingSize = new System.Drawing.Size(20, 20);
             this.menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.fileToolStripMenuItem});
+            this.fileToolStripMenuItem,
+            this.infoToolStripMenuItem});
             this.menuStrip1.Location = new System.Drawing.Point(0, 0);
             this.menuStrip1.Name = "menuStrip1";
             this.menuStrip1.Size = new System.Drawing.Size(1097, 28);
@@ -138,25 +140,17 @@
             // fileToolStripMenuItem
             // 
             this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.openToolStripMenuItem,
-            this.createANewTorrentToolStripMenuItem});
+            this.openToolStripMenuItem});
             this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
-            this.fileToolStripMenuItem.Size = new System.Drawing.Size(53, 24);
-            this.fileToolStripMenuItem.Text = "&File...";
+            this.fileToolStripMenuItem.Size = new System.Drawing.Size(44, 24);
+            this.fileToolStripMenuItem.Text = "&File";
             // 
             // openToolStripMenuItem
             // 
             this.openToolStripMenuItem.Name = "openToolStripMenuItem";
-            this.openToolStripMenuItem.Size = new System.Drawing.Size(228, 26);
+            this.openToolStripMenuItem.Size = new System.Drawing.Size(216, 26);
             this.openToolStripMenuItem.Text = "&Open...";
             this.openToolStripMenuItem.Click += new System.EventHandler(this.openToolStripMenuItem_Click);
-            // 
-            // createANewTorrentToolStripMenuItem
-            // 
-            this.createANewTorrentToolStripMenuItem.Name = "createANewTorrentToolStripMenuItem";
-            this.createANewTorrentToolStripMenuItem.Size = new System.Drawing.Size(228, 26);
-            this.createANewTorrentToolStripMenuItem.Text = "Create a new torrent...";
-            this.createANewTorrentToolStripMenuItem.Click += new System.EventHandler(this.createANewTorrentToolStripMenuItem_Click);
             // 
             // OpenFileDia
             // 
@@ -288,17 +282,6 @@
             this.FilesTab.Text = "Files";
             this.FilesTab.UseVisualStyleBackColor = true;
             // 
-            // InfoTab
-            // 
-            this.InfoTab.Controls.Add(this.InfoContainer);
-            this.InfoTab.Location = new System.Drawing.Point(4, 25);
-            this.InfoTab.Name = "InfoTab";
-            this.InfoTab.Padding = new System.Windows.Forms.Padding(3);
-            this.InfoTab.Size = new System.Drawing.Size(1089, 206);
-            this.InfoTab.TabIndex = 1;
-            this.InfoTab.Text = "Info";
-            this.InfoTab.UseVisualStyleBackColor = true;
-            // 
             // FilesInfoList
             // 
             this.FilesInfoList.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
@@ -323,6 +306,17 @@
             this.FilesSize.Text = "Size";
             this.FilesSize.Width = 105;
             // 
+            // InfoTab
+            // 
+            this.InfoTab.Controls.Add(this.InfoContainer);
+            this.InfoTab.Location = new System.Drawing.Point(4, 25);
+            this.InfoTab.Name = "InfoTab";
+            this.InfoTab.Padding = new System.Windows.Forms.Padding(3);
+            this.InfoTab.Size = new System.Drawing.Size(1089, 206);
+            this.InfoTab.TabIndex = 1;
+            this.InfoTab.Text = "Info";
+            this.InfoTab.UseVisualStyleBackColor = true;
+            // 
             // InfoContainer
             // 
             this.InfoContainer.AutoScroll = true;
@@ -344,50 +338,53 @@
             this.InfoContainer.Size = new System.Drawing.Size(1083, 200);
             this.InfoContainer.TabIndex = 0;
             // 
-            // label1
+            // StatusLbl
             // 
-            this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(5, 4);
-            this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(106, 17);
-            this.label1.TabIndex = 0;
-            this.label1.Text = "Download path:";
+            this.StatusLbl.AutoSize = true;
+            this.StatusLbl.Location = new System.Drawing.Point(117, 89);
+            this.StatusLbl.Name = "StatusLbl";
+            this.StatusLbl.Size = new System.Drawing.Size(0, 17);
+            this.StatusLbl.TabIndex = 11;
             // 
-            // label2
+            // PiecesLbl
             // 
-            this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(5, 21);
-            this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(62, 17);
-            this.label2.TabIndex = 1;
-            this.label2.Text = "Created:";
+            this.PiecesLbl.AutoSize = true;
+            this.PiecesLbl.Location = new System.Drawing.Point(117, 72);
+            this.PiecesLbl.Name = "PiecesLbl";
+            this.PiecesLbl.Size = new System.Drawing.Size(0, 17);
+            this.PiecesLbl.TabIndex = 10;
             // 
-            // label3
+            // CommentLbl
             // 
-            this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(5, 38);
-            this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(70, 17);
-            this.label3.TabIndex = 2;
-            this.label3.Text = "Info hash:";
+            this.CommentLbl.AutoSize = true;
+            this.CommentLbl.Location = new System.Drawing.Point(117, 55);
+            this.CommentLbl.Name = "CommentLbl";
+            this.CommentLbl.Size = new System.Drawing.Size(0, 17);
+            this.CommentLbl.TabIndex = 9;
             // 
-            // label4
+            // InfoHashLbl
             // 
-            this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(5, 55);
-            this.label4.Name = "label4";
-            this.label4.Size = new System.Drawing.Size(71, 17);
-            this.label4.TabIndex = 3;
-            this.label4.Text = "Comment:";
+            this.InfoHashLbl.AutoSize = true;
+            this.InfoHashLbl.Location = new System.Drawing.Point(117, 38);
+            this.InfoHashLbl.Name = "InfoHashLbl";
+            this.InfoHashLbl.Size = new System.Drawing.Size(0, 17);
+            this.InfoHashLbl.TabIndex = 8;
             // 
-            // label5
+            // CreatedLbl
             // 
-            this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(5, 72);
-            this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(54, 17);
-            this.label5.TabIndex = 4;
-            this.label5.Text = "Pieces:";
+            this.CreatedLbl.AutoSize = true;
+            this.CreatedLbl.Location = new System.Drawing.Point(117, 21);
+            this.CreatedLbl.Name = "CreatedLbl";
+            this.CreatedLbl.Size = new System.Drawing.Size(0, 17);
+            this.CreatedLbl.TabIndex = 7;
+            // 
+            // DownloadPathLbl
+            // 
+            this.DownloadPathLbl.AutoSize = true;
+            this.DownloadPathLbl.Location = new System.Drawing.Point(117, 4);
+            this.DownloadPathLbl.Name = "DownloadPathLbl";
+            this.DownloadPathLbl.Size = new System.Drawing.Size(0, 17);
+            this.DownloadPathLbl.TabIndex = 6;
             // 
             // label6
             // 
@@ -399,53 +396,65 @@
             this.label6.TabIndex = 5;
             this.label6.Text = "Status:";
             // 
-            // DownloadPathLbl
+            // label5
             // 
-            this.DownloadPathLbl.AutoSize = true;
-            this.DownloadPathLbl.Location = new System.Drawing.Point(117, 4);
-            this.DownloadPathLbl.Name = "DownloadPathLbl";
-            this.DownloadPathLbl.Size = new System.Drawing.Size(0, 17);
-            this.DownloadPathLbl.TabIndex = 6;
+            this.label5.AutoSize = true;
+            this.label5.Location = new System.Drawing.Point(5, 72);
+            this.label5.Name = "label5";
+            this.label5.Size = new System.Drawing.Size(54, 17);
+            this.label5.TabIndex = 4;
+            this.label5.Text = "Pieces:";
             // 
-            // CreatedLbl
+            // label4
             // 
-            this.CreatedLbl.AutoSize = true;
-            this.CreatedLbl.Location = new System.Drawing.Point(117, 21);
-            this.CreatedLbl.Name = "CreatedLbl";
-            this.CreatedLbl.Size = new System.Drawing.Size(0, 17);
-            this.CreatedLbl.TabIndex = 7;
+            this.label4.AutoSize = true;
+            this.label4.Location = new System.Drawing.Point(5, 55);
+            this.label4.Name = "label4";
+            this.label4.Size = new System.Drawing.Size(71, 17);
+            this.label4.TabIndex = 3;
+            this.label4.Text = "Comment:";
             // 
-            // InfoHashLbl
+            // label3
             // 
-            this.InfoHashLbl.AutoSize = true;
-            this.InfoHashLbl.Location = new System.Drawing.Point(117, 38);
-            this.InfoHashLbl.Name = "InfoHashLbl";
-            this.InfoHashLbl.Size = new System.Drawing.Size(0, 17);
-            this.InfoHashLbl.TabIndex = 8;
+            this.label3.AutoSize = true;
+            this.label3.Location = new System.Drawing.Point(5, 38);
+            this.label3.Name = "label3";
+            this.label3.Size = new System.Drawing.Size(70, 17);
+            this.label3.TabIndex = 2;
+            this.label3.Text = "Info hash:";
             // 
-            // CommentLbl
+            // label2
             // 
-            this.CommentLbl.AutoSize = true;
-            this.CommentLbl.Location = new System.Drawing.Point(117, 55);
-            this.CommentLbl.Name = "CommentLbl";
-            this.CommentLbl.Size = new System.Drawing.Size(0, 17);
-            this.CommentLbl.TabIndex = 9;
+            this.label2.AutoSize = true;
+            this.label2.Location = new System.Drawing.Point(5, 21);
+            this.label2.Name = "label2";
+            this.label2.Size = new System.Drawing.Size(62, 17);
+            this.label2.TabIndex = 1;
+            this.label2.Text = "Created:";
             // 
-            // PiecesLbl
+            // label1
             // 
-            this.PiecesLbl.AutoSize = true;
-            this.PiecesLbl.Location = new System.Drawing.Point(117, 72);
-            this.PiecesLbl.Name = "PiecesLbl";
-            this.PiecesLbl.Size = new System.Drawing.Size(0, 17);
-            this.PiecesLbl.TabIndex = 10;
+            this.label1.AutoSize = true;
+            this.label1.Location = new System.Drawing.Point(5, 4);
+            this.label1.Name = "label1";
+            this.label1.Size = new System.Drawing.Size(106, 17);
+            this.label1.TabIndex = 0;
+            this.label1.Text = "Download path:";
             // 
-            // StatusLbl
+            // infoToolStripMenuItem
             // 
-            this.StatusLbl.AutoSize = true;
-            this.StatusLbl.Location = new System.Drawing.Point(117, 89);
-            this.StatusLbl.Name = "StatusLbl";
-            this.StatusLbl.Size = new System.Drawing.Size(0, 17);
-            this.StatusLbl.TabIndex = 11;
+            this.infoToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.aboutToolStripMenuItem});
+            this.infoToolStripMenuItem.Name = "infoToolStripMenuItem";
+            this.infoToolStripMenuItem.Size = new System.Drawing.Size(47, 24);
+            this.infoToolStripMenuItem.Text = "&Info";
+            // 
+            // aboutToolStripMenuItem
+            // 
+            this.aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
+            this.aboutToolStripMenuItem.Size = new System.Drawing.Size(216, 26);
+            this.aboutToolStripMenuItem.Text = "About...";
+            this.aboutToolStripMenuItem.Click += new System.EventHandler(this.aboutToolStripMenuItem_Click);
             // 
             // MainForm
             // 
@@ -457,7 +466,7 @@
             this.Controls.Add(this.menuStrip1);
             this.MainMenuStrip = this.menuStrip1;
             this.Name = "MainForm";
-            this.Text = "MainWindow";
+            this.Text = "Primitive BT Client";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MainForm_FormClosing);
             this.Shown += new System.EventHandler(this.MainForm_Shown);
             this.menuStrip1.ResumeLayout(false);
@@ -494,7 +503,6 @@
         private System.Windows.Forms.ToolStripButton StopButton;
         private System.Windows.Forms.ToolStripButton RemoveButton;
         private System.Windows.Forms.ToolStripButton DeleteButton;
-        private System.Windows.Forms.ToolStripMenuItem createANewTorrentToolStripMenuItem;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
         private System.Windows.Forms.ColumnHeader FileProgress;
         private System.Windows.Forms.ToolStripButton RehashButton;
@@ -519,6 +527,8 @@
         private System.Windows.Forms.Label label3;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.Label label1;
+        private System.Windows.Forms.ToolStripMenuItem infoToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem aboutToolStripMenuItem;
     }
 }
 

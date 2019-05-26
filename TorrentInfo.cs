@@ -8,8 +8,6 @@ namespace CourseWork
     public partial class TorrentInfo : Form
     {
         private Torrent pendingTorrent;
-        private string chosenPath;
-        //public bool createSubFolder { get; private set; }
 
         public TorrentInfo(Form owner, Torrent torrent)
         {
