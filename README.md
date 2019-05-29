@@ -7,4 +7,4 @@ If this client received a bad piece (with wrong hash) this piece may not be down
 
 It may be full of other bugs and errors, but most of the time it works OK.
 
-This project uses [this library](https://github.com/Krusen/BencodeNET) to work with torrent files
+This project uses [this library](https://github.com/Krusen/BencodeNET) to work with torrent files and Bencode in general.
